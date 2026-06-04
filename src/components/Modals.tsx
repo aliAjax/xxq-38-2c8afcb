@@ -8,7 +8,26 @@ const PRESET_COLORS = [
   '#FF69B4', '#7B68EE', '#00CED1', '#FFD700',
 ]
 
+interface ZoneTemplate {
+  key: string
+  label: string
+  emoji: string
+  name: string
+  rows: number
+  cols: number
+  color: string
+  desc: string
+}
+
+const ZONE_TEMPLATES: ZoneTemplate[] = [
+  { key: 'theater', label: '小剧场', emoji: '🎭', name: '小剧场', rows: 5, cols: 8, color: '#BF5AF2', desc: '5×8 紧凑布局' },
+  { key: 'stand', label: '体育馆看台', emoji: '🏟️', name: '看台', rows: 20, cols: 30, color: '#00F5FF', desc: '20×30 大型看台' },
+  { key: 'vip', label: 'VIP方阵', emoji: '👑', name: 'VIP区', rows: 3, cols: 10, color: '#FFE600', desc: '3×10 尊享席位' },
+  { key: 'custom', label: '自定义', emoji: '✏️', name: '', rows: 10, cols: 10, color: PRESET_COLORS[0], desc: '自由设定参数' },
+]
+
 export function CreateZoneModal({ open, onClose }: { open: boolean; onClose: () => void }) {
+  const [selectedTemplate, setSelectedTemplate] = useState<string>('custom')
   const [name, setName] = useState('')
   const [rows, setRows] = useState(10)
   const [cols, setCols] = useState(10)
@@ -17,9 +36,30 @@ export function CreateZoneModal({ open, onClose }: { open: boolean; onClose: () 
 
   if (!open) return null
 
+  const applyTemplate = (key: string) => {
+    setSelectedTemplate(key)
+    const tpl = ZONE_TEMPLATES.find((t) => t.key === key)
+    if (tpl) {
+      setName(tpl.name)
+      setRows(tpl.rows)
+      setCols(tpl.cols)
+      setColor(tpl.color)
+    }
+  }
+
   const handleSubmit = () => {
     if (!name.trim()) return
     addZone(name.trim(), rows, cols, color)
+    setSelectedTemplate('custom')
+    setName('')
+    setRows(10)
+    setCols(10)
+    setColor(PRESET_COLORS[0])
+    onClose()
+  }
+
+  const handleClose = () => {
+    setSelectedTemplate('custom')
     setName('')
     setRows(10)
     setCols(10)
@@ -28,13 +68,39 @@ export function CreateZoneModal({ open, onClose }: { open: boolean; onClose: () 
   }
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm" onClick={onClose}>
-      <div className="glass-panel p-6 w-full max-w-md animate-fade-in" onClick={(e) => e.stopPropagation()}>
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm" onClick={handleClose}>
+      <div className="glass-panel p-6 w-full max-w-md animate-fade-in max-h-[90vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
         <div className="flex items-center justify-between mb-5">
           <h2 className="text-lg font-bold text-white">新增场馆区域</h2>
-          <button onClick={onClose} className="text-white/40 hover:text-white transition-colors">
+          <button onClick={handleClose} className="text-white/40 hover:text-white transition-colors">
             <X size={20} />
           </button>
+        </div>
+
+        <div className="mb-5">
+          <label className="block text-sm text-white/60 mb-2">区域模板</label>
+          <div className="grid grid-cols-2 gap-2">
+            {ZONE_TEMPLATES.map((tpl) => (
+              <button
+                key={tpl.key}
+                onClick={() => applyTemplate(tpl.key)}
+                className="flex items-center gap-2.5 px-3 py-2.5 rounded-lg border text-left transition-all"
+                style={{
+                  borderColor: selectedTemplate === tpl.key ? `${tpl.color}80` : 'rgba(255,255,255,0.06)',
+                  backgroundColor: selectedTemplate === tpl.key ? `${tpl.color}15` : 'rgba(255,255,255,0.03)',
+                  boxShadow: selectedTemplate === tpl.key ? `0 0 12px ${tpl.color}30` : 'none',
+                }}
+              >
+                <span className="text-xl flex-shrink-0">{tpl.emoji}</span>
+                <div className="min-w-0">
+                  <div className={`text-sm font-medium truncate ${selectedTemplate === tpl.key ? 'text-white' : 'text-white/70'}`}>
+                    {tpl.label}
+                  </div>
+                  <div className="text-xs text-white/30 truncate">{tpl.desc}</div>
+                </div>
+              </button>
+            ))}
+          </div>
         </div>
 
         <div className="space-y-4">
@@ -93,7 +159,7 @@ export function CreateZoneModal({ open, onClose }: { open: boolean; onClose: () 
         </div>
 
         <div className="flex gap-3 mt-6">
-          <button onClick={onClose} className="flex-1 px-4 py-2.5 rounded-lg bg-surface-light text-white/60 hover:text-white transition-colors">
+          <button onClick={handleClose} className="flex-1 px-4 py-2.5 rounded-lg bg-surface-light text-white/60 hover:text-white transition-colors">
             取消
           </button>
           <button
