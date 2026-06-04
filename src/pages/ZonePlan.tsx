@@ -1,5 +1,5 @@
-import { useState, useMemo } from 'react'
-import { useParams, useNavigate } from 'react-router-dom'
+import { useState, useMemo, useEffect } from 'react'
+import { useParams, useNavigate, useSearchParams } from 'react-router-dom'
 import { ArrowLeft, ChevronRight, RotateCcw } from 'lucide-react'
 import { useVenueStore } from '@/store/venueStore'
 import { SeatDetailPanel } from '@/components/SeatDetailPanel'
@@ -10,6 +10,7 @@ import { SeatSearch } from '@/components/SeatSearch'
 export default function ZonePlan() {
   const { zoneId } = useParams<{ zoneId: string }>()
   const navigate = useNavigate()
+  const [searchParams, setSearchParams] = useSearchParams()
   const zone = useVenueStore((s) => s.zones.find((z) => z.id === zoneId))
   const zones = useVenueStore((s) => s.zones)
   const clearZoneSeats = useVenueStore((s) => s.clearZoneSeats)
@@ -19,6 +20,24 @@ export default function ZonePlan() {
   const [highlightedSeatIds, setHighlightedSeatIds] = useState<Set<string>>(new Set())
 
   const selectedSeatIds = useMemo(() => Array.from(selectedIds), [selectedIds])
+
+  useEffect(() => {
+    const seatIdFromUrl = searchParams.get('seatId')
+    if (seatIdFromUrl && zoneId) {
+      const zoneSeats = useVenueStore.getState().seats[zoneId] || []
+      const seatExists = zoneSeats.some((s) => s.id === seatIdFromUrl)
+      if (seatExists) {
+        setSelectedSeatId(seatIdFromUrl)
+        setPanelOpen(true)
+      }
+    }
+  }, [searchParams, zoneId])
+
+  const clearSeatParam = () => {
+    if (searchParams.has('seatId')) {
+      setSearchParams({})
+    }
+  }
 
   if (!zone || !zoneId) {
     return (
@@ -37,6 +56,9 @@ export default function ZonePlan() {
     setSelectedSeatId(seatId)
     if (seatId) {
       setPanelOpen(true)
+      setSearchParams({ seatId })
+    } else {
+      clearSeatParam()
     }
   }
 
@@ -138,7 +160,7 @@ export default function ZonePlan() {
               <SeatDetailPanel
                 zoneId={zoneId}
                 seatId={selectedSeatId}
-                onClose={() => { setPanelOpen(false); setSelectedSeatId(null) }}
+                onClose={() => { setPanelOpen(false); setSelectedSeatId(null); clearSeatParam() }}
               />
             ) : (
               <ZoneStatsPanel zoneId={zoneId} />
@@ -152,7 +174,7 @@ export default function ZonePlan() {
           <SeatDetailPanel
             zoneId={zoneId}
             seatId={selectedSeatId}
-            onClose={() => { setPanelOpen(false); setSelectedSeatId(null) }}
+            onClose={() => { setPanelOpen(false); setSelectedSeatId(null); clearSeatParam() }}
           />
         </div>
       )}

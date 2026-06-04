@@ -5,6 +5,7 @@ import { useVenueStore } from '@/store/venueStore'
 import { ZoneCard, GlobalStats } from '@/components/ZoneCard'
 import { CreateZoneModal, DataActions } from '@/components/Modals'
 import { MemberImportModal } from '@/components/MemberImportModal'
+import { ExchangeTodoPanel } from '@/components/ExchangeTodoPanel'
 
 export default function Overview() {
   const navigate = useNavigate()
@@ -70,8 +71,9 @@ export default function Overview() {
             )}
           </div>
 
-          <div className="lg:col-span-1">
+          <div className="lg:col-span-1 space-y-4">
             <GlobalStats />
+            <ExchangeTodoPanel />
           </div>
         </div>
       </div>
