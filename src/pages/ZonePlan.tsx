@@ -5,6 +5,7 @@ import { useVenueStore } from '@/store/venueStore'
 import { SeatDetailPanel } from '@/components/SeatDetailPanel'
 import { BatchActions } from '@/components/BatchActions'
 import { ZoneStatsPanel } from '@/components/ZoneStatsPanel'
+import { SeatSearch } from '@/components/SeatSearch'
 
 export default function ZonePlan() {
   const { zoneId } = useParams<{ zoneId: string }>()
@@ -15,6 +16,7 @@ export default function ZonePlan() {
   const [selectedSeatId, setSelectedSeatId] = useState<string | null>(null)
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set())
   const [panelOpen, setPanelOpen] = useState(false)
+  const [highlightedSeatIds, setHighlightedSeatIds] = useState<Set<string>>(new Set())
 
   const selectedSeatIds = useMemo(() => Array.from(selectedIds), [selectedIds])
 
@@ -50,6 +52,11 @@ export default function ZonePlan() {
     if (confirm(`确认清空「${zone.name}」所有座位信息？`)) {
       clearZoneSeats(zoneId)
     }
+  }
+
+  const handleSearchResultClick = (seatId: string) => {
+    setSelectedSeatId(seatId)
+    setPanelOpen(true)
   }
 
   return (
@@ -94,11 +101,20 @@ export default function ZonePlan() {
 
       <div className="flex-1 flex">
         <div className="flex-1 overflow-auto p-4">
-          <BatchActions
+          <SeatSearch
             zoneId={zoneId}
-            selectedSeatIds={selectedSeatIds}
-            onClearSelection={clearSelection}
+            onResultClick={handleSearchResultClick}
+            highlightedSeatIds={highlightedSeatIds}
+            onHighlightChange={setHighlightedSeatIds}
           />
+
+          <div className="mt-4">
+            <BatchActions
+              zoneId={zoneId}
+              selectedSeatIds={selectedSeatIds}
+              onClearSelection={clearSelection}
+            />
+          </div>
 
           <div className="mt-4 overflow-x-auto pb-4">
             <SeatGridWrapper
@@ -107,6 +123,7 @@ export default function ZonePlan() {
               onSelectSeat={handleSelectSeat}
               onBatchSelect={handleBatchSelect}
               selectedIds={selectedIds}
+              highlightedIds={highlightedSeatIds}
             />
           </div>
 
@@ -149,12 +166,14 @@ function SeatGridWrapper({
   onSelectSeat,
   onBatchSelect,
   selectedIds,
+  highlightedIds,
 }: {
   zoneId: string
   selectedSeatId: string | null
   onSelectSeat: (seatId: string | null) => void
   onBatchSelect: (ids: Set<string>) => void
   selectedIds: Set<string>
+  highlightedIds: Set<string>
 }) {
   const zone = useVenueStore((s) => s.zones.find((z) => z.id === zoneId))
   const seats = useVenueStore((s) => s.seats[zoneId] || [])
@@ -232,6 +251,7 @@ function SeatGridWrapper({
 
               const isBatchSelected = localSelected.has(seat.id)
               const isCurrentlySelected = seat.id === selectedSeatId
+              const isHighlighted = highlightedIds.has(seat.id)
               const hasMember = !!seat.memberName
               const hasColor = !!seat.cheeringColor
 
@@ -240,19 +260,34 @@ function SeatGridWrapper({
 
               if (hasColor) {
                 bgStyle = {
-                  backgroundColor: seat.cheeringColor + '30',
-                  borderColor: seat.cheeringColor + '60',
-                  boxShadow: isBatchSelected || isCurrentlySelected ? `0 0 12px ${seat.cheeringColor}50` : `0 0 4px ${seat.cheeringColor}20`,
+                  backgroundColor: seat.cheeringColor + (isHighlighted && !isBatchSelected && !isCurrentlySelected ? '45' : '30'),
+                  borderColor: seat.cheeringColor + (isHighlighted ? '90' : '60'),
+                  boxShadow: isBatchSelected || isCurrentlySelected ? `0 0 12px ${seat.cheeringColor}50` : isHighlighted ? `0 0 10px ${seat.cheeringColor}40` : `0 0 4px ${seat.cheeringColor}20`,
                 }
                 cellClass += 'seat-occupied '
               } else if (hasMember) {
+                if (isHighlighted) {
+                  bgStyle = {
+                    backgroundColor: 'rgba(255, 46, 151, 0.25)',
+                    borderColor: 'rgba(255, 46, 151, 0.6)',
+                    boxShadow: '0 0 10px rgba(255, 46, 151, 0.3)',
+                  }
+                }
                 cellClass += 'seat-occupied bg-surface-lighter border-white/20 '
               } else {
+                if (isHighlighted) {
+                  bgStyle = {
+                    backgroundColor: 'rgba(255, 46, 151, 0.15)',
+                    borderColor: 'rgba(255, 46, 151, 0.5)',
+                    boxShadow: '0 0 8px rgba(255, 46, 151, 0.25)',
+                  }
+                }
                 cellClass += 'seat-empty '
               }
 
               if (seat.isObstructed) cellClass += 'seat-obstructed '
               if (isBatchSelected || isCurrentlySelected) cellClass += 'seat-selected '
+              if (isHighlighted && !isBatchSelected && !isCurrentlySelected) cellClass += 'animate-pulse-soft '
 
               return (
                 <div

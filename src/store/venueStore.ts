@@ -4,6 +4,19 @@ import type { Zone, Seat, VenueData, TicketStatus } from '@/types'
 
 export type { MemberImportItem }
 
+export interface SeatSearchResult {
+  seat: Seat
+  zoneName: string
+  matchedFields: string[]
+}
+
+export interface SearchOptions {
+  memberName?: string
+  seatNumber?: string
+  supplies?: string
+  ticketStatus?: TicketStatus
+}
+
 function generateId(): string {
   return Date.now().toString(36) + Math.random().toString(36).slice(2, 8)
 }
@@ -53,6 +66,7 @@ interface VenueStore extends VenueData {
   getZoneSeats: (zoneId: string) => Seat[]
   getZoneStats: (zoneId: string) => { total: number; assigned: number; obstructed: number; ticketStats: Record<TicketStatus, number> }
   getGlobalStats: () => { totalZones: number; totalSeats: number; totalAssigned: number; totalObstructed: number; ticketStats: Record<TicketStatus, number> }
+  searchSeats: (zoneId: string, options: SearchOptions) => SeatSearchResult[]
 }
 
 const defaultTicketStats: Record<TicketStatus, number> = {
@@ -252,6 +266,56 @@ export const useVenueStore = create<VenueStore>()(
           }
         }
         return { totalZones: zones.length, totalSeats, totalAssigned, totalObstructed, ticketStats }
+      },
+
+      searchSeats: (zoneId, options) => {
+        const { zones, seats } = get()
+        const zone = zones.find((z) => z.id === zoneId)
+        if (!zone) return []
+
+        const zoneSeats = seats[zoneId] || []
+        const results: SeatSearchResult[] = []
+
+        for (const seat of zoneSeats) {
+          const matchedFields: string[] = []
+
+          if (options.memberName && options.memberName.trim()) {
+            const searchTerm = options.memberName.trim().toLowerCase()
+            if (seat.memberName.toLowerCase().includes(searchTerm)) {
+              matchedFields.push('memberName')
+            }
+          }
+
+          if (options.seatNumber && options.seatNumber.trim()) {
+            const searchTerm = options.seatNumber.trim().toLowerCase()
+            if (seat.seatNumber.toLowerCase().includes(searchTerm)) {
+              matchedFields.push('seatNumber')
+            }
+          }
+
+          if (options.supplies && options.supplies.trim()) {
+            const searchTerm = options.supplies.trim().toLowerCase()
+            if (seat.supplies.toLowerCase().includes(searchTerm)) {
+              matchedFields.push('supplies')
+            }
+          }
+
+          if (options.ticketStatus) {
+            if (seat.ticketStatus === options.ticketStatus) {
+              matchedFields.push('ticketStatus')
+            }
+          }
+
+          if (matchedFields.length > 0) {
+            results.push({
+              seat,
+              zoneName: zone.name,
+              matchedFields,
+            })
+          }
+        }
+
+        return results
       },
     }),
     {
