@@ -4,6 +4,20 @@ import type { Zone, Seat, VenueData, TicketStatus } from '@/types'
 
 export type { MemberImportItem }
 
+type HistoryActionType =
+  | 'updateSeat'
+  | 'batchUpdateSeats'
+  | 'batchImportMembers'
+  | 'clearZoneSeats'
+  | 'importData'
+  | 'clearAll'
+
+interface HistoryEntry {
+  type: HistoryActionType
+  before: Record<string, Seat[]>
+  label: string
+}
+
 export interface SeatSearchResult {
   seat: Seat
   zoneName: string
@@ -53,23 +67,29 @@ interface MemberImportItem {
 }
 
 interface VenueStore extends VenueData {
+  past: HistoryEntry[]
+  future: HistoryEntry[]
+  canUndo: boolean
+  canRedo: boolean
   addZone: (name: string, rows: number, cols: number, color: string) => string
   removeZone: (zoneId: string) => void
   updateZone: (zoneId: string, updates: Partial<Pick<Zone, 'name' | 'color'>>) => void
   updateZoneLayout: (zoneId: string, updates: Partial<Pick<Zone, 'x' | 'y' | 'width' | 'height' | 'color'>>) => void
-  updateSeat: (zoneId: string, seatId: string, updates: Partial<Omit<Seat, 'id' | 'zoneId' | 'row' | 'col' | 'seatNumber'>>) => void
-  batchUpdateSeats: (zoneId: string, seatIds: string[], updates: Partial<Omit<Seat, 'id' | 'zoneId' | 'row' | 'col' | 'seatNumber'>>) => void
-  batchImportMembers: (items: MemberImportItem[]) => { matched: number; unmatchedZones: string[]; unmatchedSeats: string[]; duplicateMembers: string[] }
-  clearZoneSeats: (zoneId: string) => void
+  updateSeat: (zoneId: string, seatId: string, updates: Partial<Omit<Seat, 'id' | 'zoneId' | 'row' | 'col' | 'seatNumber'>>, recordHistory?: boolean) => void
+  batchUpdateSeats: (zoneId: string, seatIds: string[], updates: Partial<Omit<Seat, 'id' | 'zoneId' | 'row' | 'col' | 'seatNumber'>>, recordHistory?: boolean, historyLabel?: string) => void
+  batchImportMembers: (items: MemberImportItem[], recordHistory?: boolean) => { matched: number; unmatchedZones: string[]; unmatchedSeats: string[]; duplicateMembers: string[] }
+  clearZoneSeats: (zoneId: string, recordHistory?: boolean) => void
   exportData: () => string
-  importData: (json: string) => boolean
-  clearAll: () => void
+  importData: (json: string, recordHistory?: boolean) => boolean
+  clearAll: (recordHistory?: boolean) => void
   getZoneSeats: (zoneId: string) => Seat[]
   getZoneStats: (zoneId: string) => { total: number; assigned: number; obstructed: number; ticketStats: Record<TicketStatus, number> }
   getGlobalStats: () => { totalZones: number; totalSeats: number; totalAssigned: number; totalObstructed: number; ticketStats: Record<TicketStatus, number> }
   searchSeats: (zoneId: string, options: SearchOptions) => SeatSearchResult[]
   resetZoneLayouts: () => void
   ensureZoneLayouts: () => void
+  undo: () => void
+  redo: () => void
 }
 
 const defaultTicketStats: Record<TicketStatus, number> = {
@@ -79,11 +99,23 @@ const defaultTicketStats: Record<TicketStatus, number> = {
   exchanged: 0,
 }
 
+function cloneSeats(seats: Record<string, Seat[]>): Record<string, Seat[]> {
+  const cloned: Record<string, Seat[]> = {}
+  for (const [zoneId, zoneSeats] of Object.entries(seats)) {
+    cloned[zoneId] = zoneSeats.map((s) => ({ ...s }))
+  }
+  return cloned
+}
+
 export const useVenueStore = create<VenueStore>()(
   persist(
     (set, get) => ({
       zones: [],
       seats: {},
+      past: [],
+      future: [],
+      canUndo: false,
+      canRedo: false,
 
       addZone: (name, rows, cols, color) => {
         const id = generateId()
@@ -152,34 +184,74 @@ export const useVenueStore = create<VenueStore>()(
         }))
       },
 
-      updateSeat: (zoneId, seatId, updates) => {
-        set((state) => {
-          const zoneSeats = state.seats[zoneId]
-          if (!zoneSeats) return state
-          return {
-            seats: {
-              ...state.seats,
-              [zoneId]: zoneSeats.map((s) => (s.id === seatId ? { ...s, ...updates } : s)),
-            },
+      updateSeat: (zoneId, seatId, updates, recordHistory = true) => {
+        const state = get()
+        const zoneSeats = state.seats[zoneId]
+        if (!zoneSeats) return
+
+        const seat = zoneSeats.find((s) => s.id === seatId)
+        if (!seat) return
+
+        const changed = Object.entries(updates).some(
+          ([key, value]) => seat[key as keyof Seat] !== value
+        )
+        if (!changed) return
+
+        if (recordHistory) {
+          const before: Record<string, Seat[]> = {
+            [zoneId]: [{ ...seat }],
           }
-        })
+          set((s) => ({
+            past: [...s.past, { type: 'updateSeat', before, label: '编辑座位' }],
+            future: [],
+            canUndo: true,
+            canRedo: false,
+          }))
+        }
+
+        set((s) => ({
+          seats: {
+            ...s.seats,
+            [zoneId]: s.seats[zoneId]!.map((s) => (s.id === seatId ? { ...s, ...updates } : s)),
+          },
+        }))
       },
 
-      batchUpdateSeats: (zoneId, seatIds, updates) => {
-        set((state) => {
-          const zoneSeats = state.seats[zoneId]
-          if (!zoneSeats) return state
-          const idSet = new Set(seatIds)
-          return {
-            seats: {
-              ...state.seats,
-              [zoneId]: zoneSeats.map((s) => (idSet.has(s.id) ? { ...s, ...updates } : s)),
-            },
+      batchUpdateSeats: (zoneId, seatIds, updates, recordHistory = true, historyLabel) => {
+        const state = get()
+        const zoneSeats = state.seats[zoneId]
+        if (!zoneSeats) return
+
+        const idSet = new Set(seatIds)
+        const affectedSeats = zoneSeats.filter((s) => idSet.has(s.id))
+        if (affectedSeats.length === 0) return
+
+        let label = historyLabel || '批量更新'
+        if ('cheeringColor' in updates) label = '批量上色'
+        else if ('ticketStatus' in updates) label = '批量换票状态'
+        else if (Object.keys(updates).length >= 5) label = '清空座位'
+
+        if (recordHistory) {
+          const before: Record<string, Seat[]> = {
+            [zoneId]: affectedSeats.map((s) => ({ ...s })),
           }
-        })
+          set((s) => ({
+            past: [...s.past, { type: 'batchUpdateSeats', before, label }],
+            future: [],
+            canUndo: true,
+            canRedo: false,
+          }))
+        }
+
+        set((s) => ({
+          seats: {
+            ...s.seats,
+            [zoneId]: s.seats[zoneId]!.map((s) => (idSet.has(s.id) ? { ...s, ...updates } : s)),
+          },
+        }))
       },
 
-      batchImportMembers: (items) => {
+      batchImportMembers: (items, recordHistory = true) => {
         const { zones, seats } = get()
         const zoneNameMap = new Map(zones.map((z) => [z.name.trim().toLowerCase(), z]))
         const unmatchedZones = new Set<string>()
@@ -222,6 +294,24 @@ export const useVenueStore = create<VenueStore>()(
           })
         }
 
+        const matchedCount = Array.from(updatesMap.values()).reduce((sum, m) => sum + m.size, 0)
+
+        if (recordHistory && matchedCount > 0) {
+          const before: Record<string, Seat[]> = {}
+          for (const [zoneId, seatUpdates] of updatesMap) {
+            const zoneSeats = seats[zoneId] || []
+            before[zoneId] = zoneSeats
+              .filter((s) => seatUpdates.has(s.id))
+              .map((s) => ({ ...s }))
+          }
+          set((s) => ({
+            past: [...s.past, { type: 'batchImportMembers', before, label: '导入成员名单' }],
+            future: [],
+            canUndo: true,
+            canRedo: false,
+          }))
+        }
+
         set((state) => {
           const newSeats = { ...state.seats }
           for (const [zoneId, seatUpdates] of updatesMap) {
@@ -235,24 +325,36 @@ export const useVenueStore = create<VenueStore>()(
         })
 
         return {
-          matched: Array.from(updatesMap.values()).reduce((sum, m) => sum + m.size, 0),
+          matched: matchedCount,
           unmatchedZones: Array.from(unmatchedZones),
           unmatchedSeats,
           duplicateMembers,
         }
       },
 
-      clearZoneSeats: (zoneId) => {
-        set((state) => {
-          const zone = state.zones.find((z) => z.id === zoneId)
-          if (!zone) return state
-          return {
-            seats: {
-              ...state.seats,
-              [zoneId]: createSeatsForZone(zone),
-            },
+      clearZoneSeats: (zoneId, recordHistory = true) => {
+        const state = get()
+        const zone = state.zones.find((z) => z.id === zoneId)
+        if (!zone) return
+
+        if (recordHistory) {
+          const before: Record<string, Seat[]> = {
+            [zoneId]: state.seats[zoneId]?.map((s) => ({ ...s })) || [],
           }
-        })
+          set((s) => ({
+            past: [...s.past, { type: 'clearZoneSeats', before, label: `清空区域「${zone.name}」` }],
+            future: [],
+            canUndo: true,
+            canRedo: false,
+          }))
+        }
+
+        set((s) => ({
+          seats: {
+            ...s.seats,
+            [zoneId]: createSeatsForZone(zone),
+          },
+        }))
       },
 
       exportData: () => {
@@ -260,7 +362,7 @@ export const useVenueStore = create<VenueStore>()(
         return JSON.stringify({ zones, seats }, null, 2)
       },
 
-      importData: (json) => {
+      importData: (json, recordHistory = true) => {
         try {
           const data = JSON.parse(json) as VenueData
           if (!data.zones || !data.seats) return false
@@ -275,6 +377,17 @@ export const useVenueStore = create<VenueStore>()(
               height: Math.max(80, zone.rows * 25),
             }
           })
+
+          if (recordHistory) {
+            const before = cloneSeats(get().seats)
+            set((s) => ({
+              past: [...s.past, { type: 'importData', before, label: '导入数据' }],
+              future: [],
+              canUndo: true,
+              canRedo: false,
+            }))
+          }
+
           set({ zones: zonesWithLayout, seats: data.seats })
           return true
         } catch {
@@ -282,7 +395,16 @@ export const useVenueStore = create<VenueStore>()(
         }
       },
 
-      clearAll: () => {
+      clearAll: (recordHistory = true) => {
+        if (recordHistory) {
+          const before = cloneSeats(get().seats)
+          set((s) => ({
+            past: [...s.past, { type: 'clearAll', before, label: '清空全部数据' }],
+            future: [],
+            canUndo: true,
+            canRedo: false,
+          }))
+        }
         set({ zones: [], seats: {} })
       },
 
@@ -370,9 +492,74 @@ export const useVenueStore = create<VenueStore>()(
 
         return results
       },
+
+      undo: () => {
+        const state = get()
+        if (state.past.length === 0) return
+
+        const entry = state.past[state.past.length - 1]
+        const newPast = state.past.slice(0, -1)
+
+        const currentSeats = cloneSeats(state.seats)
+        const restoredSeats = cloneSeats(state.seats)
+
+        for (const [zoneId, beforeSeats] of Object.entries(entry.before)) {
+          const zoneSeats = restoredSeats[zoneId]
+          if (!zoneSeats) continue
+          const beforeMap = new Map(beforeSeats.map((s) => [s.id, s]))
+          restoredSeats[zoneId] = zoneSeats.map((s) => beforeMap.has(s.id) ? { ...beforeMap.get(s.id)! } : s)
+        }
+
+        const futureEntry: HistoryEntry = {
+          type: entry.type,
+          before: currentSeats,
+          label: entry.label,
+        }
+
+        set({
+          seats: restoredSeats,
+          past: newPast,
+          future: [...state.future, futureEntry],
+          canUndo: newPast.length > 0,
+          canRedo: true,
+        })
+      },
+
+      redo: () => {
+        const state = get()
+        if (state.future.length === 0) return
+
+        const entry = state.future[state.future.length - 1]
+        const newFuture = state.future.slice(0, -1)
+
+        const currentSeats = cloneSeats(state.seats)
+        const restoredSeats = cloneSeats(state.seats)
+
+        for (const [zoneId, beforeSeats] of Object.entries(entry.before)) {
+          const zoneSeats = restoredSeats[zoneId]
+          if (!zoneSeats) continue
+          const beforeMap = new Map(beforeSeats.map((s) => [s.id, s]))
+          restoredSeats[zoneId] = zoneSeats.map((s) => beforeMap.has(s.id) ? { ...beforeMap.get(s.id)! } : s)
+        }
+
+        const pastEntry: HistoryEntry = {
+          type: entry.type,
+          before: currentSeats,
+          label: entry.label,
+        }
+
+        set({
+          seats: restoredSeats,
+          past: [...state.past, pastEntry],
+          future: newFuture,
+          canUndo: true,
+          canRedo: newFuture.length > 0,
+        })
+      },
     }),
     {
       name: 'live-cheering-venue-data',
+      partialize: (state) => ({ zones: state.zones, seats: state.seats }),
     }
   )
 )
