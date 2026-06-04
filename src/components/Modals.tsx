@@ -1,5 +1,5 @@
 import { useState, useRef } from 'react'
-import { Plus, Download, Upload, Trash2, X } from 'lucide-react'
+import { Download, Upload, Trash2, X } from 'lucide-react'
 import { useVenueStore } from '@/store/venueStore'
 
 const PRESET_COLORS = [

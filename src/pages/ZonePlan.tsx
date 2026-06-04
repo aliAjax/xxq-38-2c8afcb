@@ -16,8 +16,6 @@ export default function ZonePlan() {
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set())
   const [panelOpen, setPanelOpen] = useState(false)
 
-  const seats = useVenueStore((s) => s.seats[zoneId || ''] || [])
-
   const selectedSeatIds = useMemo(() => Array.from(selectedIds), [selectedIds])
 
   if (!zone || !zoneId) {

@@ -69,10 +69,11 @@ export const useVenueStore = create<VenueStore>()(
 
       removeZone: (zoneId) => {
         set((state) => {
-          const { [zoneId]: _, ...restSeats } = state.seats
+          const newSeats = { ...state.seats }
+          delete newSeats[zoneId]
           return {
             zones: state.zones.filter((z) => z.id !== zoneId),
-            seats: restSeats,
+            seats: newSeats,
           }
         })
       },
