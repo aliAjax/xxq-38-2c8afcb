@@ -7,6 +7,7 @@ import { CreateZoneModal, DataActions } from '@/components/Modals'
 import { MemberImportModal } from '@/components/MemberImportModal'
 import { ExchangeTodoPanel } from '@/components/ExchangeTodoPanel'
 import { FloorPlanEditor } from '@/components/FloorPlanEditor'
+import { UndoRedoButtons } from '@/components/UndoRedoButtons'
 
 type ViewMode = 'list' | 'floorplan'
 
@@ -75,6 +76,8 @@ export default function Overview() {
               平面图
             </button>
           </div>
+
+          <UndoRedoButtons />
 
           <DataActions />
         </div>

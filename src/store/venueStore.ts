@@ -15,6 +15,7 @@ type HistoryActionType =
 interface HistoryEntry {
   type: HistoryActionType
   before: Record<string, Seat[]>
+  beforeZones?: Zone[]
   label: string
 }
 
@@ -380,8 +381,9 @@ export const useVenueStore = create<VenueStore>()(
 
           if (recordHistory) {
             const before = cloneSeats(get().seats)
+            const beforeZones = get().zones.map((z) => ({ ...z }))
             set((s) => ({
-              past: [...s.past, { type: 'importData', before, label: '导入数据' }],
+              past: [...s.past, { type: 'importData', before, beforeZones, label: '导入数据' }],
               future: [],
               canUndo: true,
               canRedo: false,
@@ -398,8 +400,9 @@ export const useVenueStore = create<VenueStore>()(
       clearAll: (recordHistory = true) => {
         if (recordHistory) {
           const before = cloneSeats(get().seats)
+          const beforeZones = get().zones.map((z) => ({ ...z }))
           set((s) => ({
-            past: [...s.past, { type: 'clearAll', before, label: '清空全部数据' }],
+            past: [...s.past, { type: 'clearAll', before, beforeZones, label: '清空全部数据' }],
             future: [],
             canUndo: true,
             canRedo: false,
@@ -501,28 +504,42 @@ export const useVenueStore = create<VenueStore>()(
         const newPast = state.past.slice(0, -1)
 
         const currentSeats = cloneSeats(state.seats)
-        const restoredSeats = cloneSeats(state.seats)
-
-        for (const [zoneId, beforeSeats] of Object.entries(entry.before)) {
-          const zoneSeats = restoredSeats[zoneId]
-          if (!zoneSeats) continue
-          const beforeMap = new Map(beforeSeats.map((s) => [s.id, s]))
-          restoredSeats[zoneId] = zoneSeats.map((s) => beforeMap.has(s.id) ? { ...beforeMap.get(s.id)! } : s)
-        }
+        const currentZones = state.zones.map((z) => ({ ...z }))
 
         const futureEntry: HistoryEntry = {
           type: entry.type,
           before: currentSeats,
+          beforeZones: entry.beforeZones ? currentZones : undefined,
           label: entry.label,
         }
 
-        set({
-          seats: restoredSeats,
-          past: newPast,
-          future: [...state.future, futureEntry],
-          canUndo: newPast.length > 0,
-          canRedo: true,
-        })
+        if (entry.beforeZones) {
+          set({
+            zones: entry.beforeZones,
+            seats: entry.before,
+            past: newPast,
+            future: [...state.future, futureEntry],
+            canUndo: newPast.length > 0,
+            canRedo: true,
+          })
+        } else {
+          const restoredSeats = cloneSeats(state.seats)
+          for (const [zoneId, beforeSeats] of Object.entries(entry.before)) {
+            const zoneSeats = restoredSeats[zoneId]
+            if (!zoneSeats) continue
+            const beforeMap = new Map(beforeSeats.map((s) => [s.id, s]))
+            restoredSeats[zoneId] = zoneSeats.map((s) =>
+              beforeMap.has(s.id) ? { ...beforeMap.get(s.id)! } : s
+            )
+          }
+          set({
+            seats: restoredSeats,
+            past: newPast,
+            future: [...state.future, futureEntry],
+            canUndo: newPast.length > 0,
+            canRedo: true,
+          })
+        }
       },
 
       redo: () => {
@@ -533,28 +550,42 @@ export const useVenueStore = create<VenueStore>()(
         const newFuture = state.future.slice(0, -1)
 
         const currentSeats = cloneSeats(state.seats)
-        const restoredSeats = cloneSeats(state.seats)
-
-        for (const [zoneId, beforeSeats] of Object.entries(entry.before)) {
-          const zoneSeats = restoredSeats[zoneId]
-          if (!zoneSeats) continue
-          const beforeMap = new Map(beforeSeats.map((s) => [s.id, s]))
-          restoredSeats[zoneId] = zoneSeats.map((s) => beforeMap.has(s.id) ? { ...beforeMap.get(s.id)! } : s)
-        }
+        const currentZones = state.zones.map((z) => ({ ...z }))
 
         const pastEntry: HistoryEntry = {
           type: entry.type,
           before: currentSeats,
+          beforeZones: entry.beforeZones ? currentZones : undefined,
           label: entry.label,
         }
 
-        set({
-          seats: restoredSeats,
-          past: [...state.past, pastEntry],
-          future: newFuture,
-          canUndo: true,
-          canRedo: newFuture.length > 0,
-        })
+        if (entry.beforeZones) {
+          set({
+            zones: entry.beforeZones,
+            seats: entry.before,
+            past: [...state.past, pastEntry],
+            future: newFuture,
+            canUndo: true,
+            canRedo: newFuture.length > 0,
+          })
+        } else {
+          const restoredSeats = cloneSeats(state.seats)
+          for (const [zoneId, beforeSeats] of Object.entries(entry.before)) {
+            const zoneSeats = restoredSeats[zoneId]
+            if (!zoneSeats) continue
+            const beforeMap = new Map(beforeSeats.map((s) => [s.id, s]))
+            restoredSeats[zoneId] = zoneSeats.map((s) =>
+              beforeMap.has(s.id) ? { ...beforeMap.get(s.id)! } : s
+            )
+          }
+          set({
+            seats: restoredSeats,
+            past: [...state.past, pastEntry],
+            future: newFuture,
+            canUndo: true,
+            canRedo: newFuture.length > 0,
+          })
+        }
       },
     }),
     {
