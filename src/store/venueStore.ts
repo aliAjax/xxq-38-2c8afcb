@@ -1,6 +1,6 @@
 import { create } from 'zustand'
 import { persist } from 'zustand/middleware'
-import type { Zone, Seat, VenueData, TicketStatus, ImportPreviewResult, ImportStrategy, ZoneConflictInfo, SeatConflictInfo, InvalidSeatInfo } from '@/types'
+import type { Zone, Seat, VenueData, TicketStatus, ImportPreviewResult, ImportStrategy, ZoneConflictInfo, SeatConflictInfo, InvalidSeatInfo, ActivityLogType, ActivityLogEntry } from '@/types'
 
 export type { MemberImportItem }
 
@@ -36,6 +36,16 @@ function generateId(): string {
   return Date.now().toString(36) + Math.random().toString(36).slice(2, 8)
 }
 
+function createActivityLogEntry(type: ActivityLogType, author: string, data: Partial<ActivityLogEntry> = {}): ActivityLogEntry {
+  return {
+    id: generateId(),
+    timestamp: Date.now(),
+    type,
+    author,
+    ...data,
+  }
+}
+
 function createSeatsForZone(zone: Zone): Seat[] {
   const seats: Seat[] = []
   for (let r = 0; r < zone.rows; r++) {
@@ -52,6 +62,7 @@ function createSeatsForZone(zone: Zone): Seat[] {
         obstructionNote: '',
         ticketStatus: 'none',
         supplies: '',
+        activityLog: [],
       })
     }
   }
@@ -76,8 +87,8 @@ interface VenueStore extends VenueData {
   removeZone: (zoneId: string) => void
   updateZone: (zoneId: string, updates: Partial<Pick<Zone, 'name' | 'color'>>) => void
   updateZoneLayout: (zoneId: string, updates: Partial<Pick<Zone, 'x' | 'y' | 'width' | 'height' | 'color'>>) => void
-  updateSeat: (zoneId: string, seatId: string, updates: Partial<Omit<Seat, 'id' | 'zoneId' | 'row' | 'col' | 'seatNumber'>>, recordHistory?: boolean) => void
-  batchUpdateSeats: (zoneId: string, seatIds: string[], updates: Partial<Omit<Seat, 'id' | 'zoneId' | 'row' | 'col' | 'seatNumber'>>, recordHistory?: boolean, historyLabel?: string) => void
+  updateSeat: (zoneId: string, seatId: string, updates: Partial<Omit<Seat, 'id' | 'zoneId' | 'row' | 'col' | 'seatNumber' | 'activityLog'>>, recordHistory?: boolean) => void
+  batchUpdateSeats: (zoneId: string, seatIds: string[], updates: Partial<Omit<Seat, 'id' | 'zoneId' | 'row' | 'col' | 'seatNumber' | 'activityLog'>>, recordHistory?: boolean, historyLabel?: string) => void
   batchImportMembers: (items: MemberImportItem[], recordHistory?: boolean) => { matched: number; unmatchedZones: string[]; unmatchedSeats: string[]; duplicateMembers: string[] }
   clearZoneSeats: (zoneId: string, recordHistory?: boolean) => void
   exportData: () => string
@@ -93,6 +104,9 @@ interface VenueStore extends VenueData {
   ensureZoneLayouts: () => void
   undo: () => void
   redo: () => void
+  addSeatNote: (zoneId: string, seatId: string, note: string, author?: string) => void
+  removeSeatNote: (zoneId: string, seatId: string, entryId: string) => void
+  ensureActivityLogMigration: () => void
 }
 
 const defaultTicketStats: Record<TicketStatus, number> = {
@@ -200,6 +214,62 @@ export const useVenueStore = create<VenueStore>()(
         )
         if (!changed) return
 
+        const activityLogs: ActivityLogEntry[] = []
+        const author = '我'
+
+        if ('memberName' in updates && seat.memberName !== updates.memberName) {
+          if (updates.memberName) {
+            activityLogs.push(createActivityLogEntry('assignMember', author, {
+              oldValue: seat.memberName || undefined,
+              newValue: updates.memberName,
+              fieldName: 'memberName',
+            }))
+          }
+        }
+
+        if ('ticketStatus' in updates && seat.ticketStatus !== updates.ticketStatus) {
+          activityLogs.push(createActivityLogEntry('changeTicketStatus', author, {
+            oldValue: seat.ticketStatus,
+            newValue: updates.ticketStatus,
+            fieldName: 'ticketStatus',
+          }))
+        }
+
+        if ('isObstructed' in updates && seat.isObstructed !== updates.isObstructed) {
+          activityLogs.push(createActivityLogEntry('toggleObstruction', author, {
+            oldValue: seat.isObstructed,
+            newValue: updates.isObstructed,
+            fieldName: 'isObstructed',
+            note: updates.obstructionNote,
+          }))
+        }
+
+        if ('cheeringColor' in updates && seat.cheeringColor !== updates.cheeringColor) {
+          activityLogs.push(createActivityLogEntry('updateCheeringColor', author, {
+            oldValue: seat.cheeringColor || undefined,
+            newValue: updates.cheeringColor || undefined,
+            fieldName: 'cheeringColor',
+          }))
+        }
+
+        if ('supplies' in updates && seat.supplies !== updates.supplies) {
+          activityLogs.push(createActivityLogEntry('updateSupplies', author, {
+            oldValue: seat.supplies || undefined,
+            newValue: updates.supplies || undefined,
+            fieldName: 'supplies',
+          }))
+        }
+
+        const isClear = Object.keys(updates).length >= 5
+        if (isClear) {
+          activityLogs.push(createActivityLogEntry('clearSeat', author, {
+            note: '清空座位信息',
+          }))
+        }
+
+        const currentActivityLog = seat.activityLog || []
+        const newActivityLog = [...currentActivityLog, ...activityLogs]
+
         if (recordHistory) {
           const before: Record<string, Seat[]> = {
             [zoneId]: [{ ...seat }],
@@ -215,7 +285,7 @@ export const useVenueStore = create<VenueStore>()(
         set((s) => ({
           seats: {
             ...s.seats,
-            [zoneId]: s.seats[zoneId]!.map((s) => (s.id === seatId ? { ...s, ...updates } : s)),
+            [zoneId]: s.seats[zoneId]!.map((s) => (s.id === seatId ? { ...s, ...updates, activityLog: newActivityLog } : s)),
           },
         }))
       },
@@ -234,6 +304,60 @@ export const useVenueStore = create<VenueStore>()(
         else if ('ticketStatus' in updates) label = '批量换票状态'
         else if (Object.keys(updates).length >= 5) label = '清空座位'
 
+        const author = '我'
+        const isClear = Object.keys(updates).length >= 5
+
+        const updatedSeats = zoneSeats.map((s) => {
+          if (!idSet.has(s.id)) return s
+
+          const activityLogs: ActivityLogEntry[] = []
+
+          if ('memberName' in updates && s.memberName !== updates.memberName) {
+            if (updates.memberName) {
+              activityLogs.push(createActivityLogEntry('assignMember', author, {
+                oldValue: s.memberName || undefined,
+                newValue: updates.memberName,
+                fieldName: 'memberName',
+              }))
+            }
+          }
+
+          if ('ticketStatus' in updates && s.ticketStatus !== updates.ticketStatus) {
+            activityLogs.push(createActivityLogEntry('changeTicketStatus', author, {
+              oldValue: s.ticketStatus,
+              newValue: updates.ticketStatus,
+              fieldName: 'ticketStatus',
+            }))
+          }
+
+          if ('cheeringColor' in updates && s.cheeringColor !== updates.cheeringColor) {
+            activityLogs.push(createActivityLogEntry('updateCheeringColor', author, {
+              oldValue: s.cheeringColor || undefined,
+              newValue: updates.cheeringColor || undefined,
+              fieldName: 'cheeringColor',
+            }))
+          }
+
+          if ('supplies' in updates && s.supplies !== updates.supplies) {
+            activityLogs.push(createActivityLogEntry('updateSupplies', author, {
+              oldValue: s.supplies || undefined,
+              newValue: updates.supplies || undefined,
+              fieldName: 'supplies',
+            }))
+          }
+
+          if (isClear) {
+            activityLogs.push(createActivityLogEntry('clearSeat', author, {
+              note: '清空座位信息',
+            }))
+          }
+
+          const currentActivityLog = s.activityLog || []
+          const newActivityLog = [...currentActivityLog, ...activityLogs]
+
+          return { ...s, ...updates, activityLog: newActivityLog }
+        })
+
         if (recordHistory) {
           const before: Record<string, Seat[]> = {
             [zoneId]: affectedSeats.map((s) => ({ ...s })),
@@ -249,7 +373,7 @@ export const useVenueStore = create<VenueStore>()(
         set((s) => ({
           seats: {
             ...s.seats,
-            [zoneId]: s.seats[zoneId]!.map((s) => (idSet.has(s.id) ? { ...s, ...updates } : s)),
+            [zoneId]: updatedSeats,
           },
         }))
       },
@@ -317,11 +441,55 @@ export const useVenueStore = create<VenueStore>()(
 
         set((state) => {
           const newSeats = { ...state.seats }
+          const author = '我'
           for (const [zoneId, seatUpdates] of updatesMap) {
             const zoneSeats = newSeats[zoneId] || []
             newSeats[zoneId] = zoneSeats.map((s) => {
               const updates = seatUpdates.get(s.id)
-              return updates ? { ...s, ...updates } : s
+              if (!updates) return s
+
+              const activityLogs: ActivityLogEntry[] = []
+
+              if (updates.memberName && s.memberName !== updates.memberName) {
+                activityLogs.push(createActivityLogEntry('assignMember', author, {
+                  oldValue: s.memberName || undefined,
+                  newValue: updates.memberName,
+                  fieldName: 'memberName',
+                  note: '通过导入分配',
+                }))
+              }
+
+              if (updates.ticketStatus && s.ticketStatus !== updates.ticketStatus) {
+                activityLogs.push(createActivityLogEntry('changeTicketStatus', author, {
+                  oldValue: s.ticketStatus,
+                  newValue: updates.ticketStatus,
+                  fieldName: 'ticketStatus',
+                  note: '通过导入更新',
+                }))
+              }
+
+              if (updates.cheeringColor && s.cheeringColor !== updates.cheeringColor) {
+                activityLogs.push(createActivityLogEntry('updateCheeringColor', author, {
+                  oldValue: s.cheeringColor || undefined,
+                  newValue: updates.cheeringColor || undefined,
+                  fieldName: 'cheeringColor',
+                  note: '通过导入更新',
+                }))
+              }
+
+              if (updates.supplies && s.supplies !== updates.supplies) {
+                activityLogs.push(createActivityLogEntry('updateSupplies', author, {
+                  oldValue: s.supplies || undefined,
+                  newValue: updates.supplies || undefined,
+                  fieldName: 'supplies',
+                  note: '通过导入更新',
+                }))
+              }
+
+              const currentActivityLog = s.activityLog || []
+              const newActivityLog = [...currentActivityLog, ...activityLogs]
+
+              return { ...s, ...updates, activityLog: newActivityLog }
             })
           }
           return { seats: newSeats }
@@ -392,7 +560,14 @@ export const useVenueStore = create<VenueStore>()(
             }))
           }
 
-          set({ zones: zonesWithLayout, seats: data.seats })
+          const migratedSeats: Record<string, Seat[]> = {}
+          for (const [zoneId, zoneSeats] of Object.entries(data.seats)) {
+            migratedSeats[zoneId] = zoneSeats.map((seat) => ({
+              ...seat,
+              activityLog: seat.activityLog || [],
+            }))
+          }
+          set({ zones: zonesWithLayout, seats: migratedSeats })
           return true
         } catch {
           return false
@@ -582,6 +757,7 @@ export const useVenueStore = create<VenueStore>()(
           const updatedSeats = cloneSeats(currentState.seats)
 
           const effectiveStrategy: 'overwrite' | 'mergeEmpty' = strategy === 'mergeEmpty' ? 'mergeEmpty' : 'overwrite'
+          const author = '我'
 
           for (const zone of parsedZones) {
             if (!selectedZoneIdSet.has(zone.id)) continue
@@ -599,7 +775,10 @@ export const useVenueStore = create<VenueStore>()(
               }
               const newZone = { ...zone, ...layout }
               updatedZones.push(newZone)
-              updatedSeats[zone.id] = zoneSeats.map((s) => ({ ...s }))
+              updatedSeats[zone.id] = zoneSeats.map((s) => ({
+                ...s,
+                activityLog: s.activityLog || [],
+              }))
             } else {
               const targetSeats = updatedSeats[existingZone.id]
               if (!targetSeats) continue
@@ -610,18 +789,66 @@ export const useVenueStore = create<VenueStore>()(
                 const existingSeat = seatNumberMap.get(newSeat.seatNumber)
                 if (!existingSeat) continue
 
+                const activityLogs: ActivityLogEntry[] = []
+                let shouldUpdate = false
+
                 if (effectiveStrategy === 'overwrite') {
+                  if (existingSeat.memberName !== newSeat.memberName && newSeat.memberName) {
+                    activityLogs.push(createActivityLogEntry('assignMember', author, {
+                      oldValue: existingSeat.memberName || undefined,
+                      newValue: newSeat.memberName,
+                      fieldName: 'memberName',
+                      note: '通过导入覆盖',
+                    }))
+                  }
+                  if (existingSeat.ticketStatus !== newSeat.ticketStatus) {
+                    activityLogs.push(createActivityLogEntry('changeTicketStatus', author, {
+                      oldValue: existingSeat.ticketStatus,
+                      newValue: newSeat.ticketStatus,
+                      fieldName: 'ticketStatus',
+                      note: '通过导入覆盖',
+                    }))
+                  }
+                  if (existingSeat.cheeringColor !== newSeat.cheeringColor) {
+                    activityLogs.push(createActivityLogEntry('updateCheeringColor', author, {
+                      oldValue: existingSeat.cheeringColor || undefined,
+                      newValue: newSeat.cheeringColor || undefined,
+                      fieldName: 'cheeringColor',
+                      note: '通过导入覆盖',
+                    }))
+                  }
+                  if (existingSeat.supplies !== newSeat.supplies) {
+                    activityLogs.push(createActivityLogEntry('updateSupplies', author, {
+                      oldValue: existingSeat.supplies || undefined,
+                      newValue: newSeat.supplies || undefined,
+                      fieldName: 'supplies',
+                      note: '通过导入覆盖',
+                    }))
+                  }
                   existingSeat.memberName = newSeat.memberName
                   existingSeat.cheeringColor = newSeat.cheeringColor
                   existingSeat.ticketStatus = newSeat.ticketStatus
                   existingSeat.supplies = newSeat.supplies
+                  shouldUpdate = true
                 } else if (effectiveStrategy === 'mergeEmpty') {
-                  if (!existingSeat.memberName) {
+                  if (!existingSeat.memberName && newSeat.memberName) {
+                    activityLogs.push(createActivityLogEntry('assignMember', author, {
+                      oldValue: undefined,
+                      newValue: newSeat.memberName,
+                      fieldName: 'memberName',
+                      note: '通过导入合并',
+                    }))
                     existingSeat.memberName = newSeat.memberName
                     existingSeat.cheeringColor = newSeat.cheeringColor
                     existingSeat.ticketStatus = newSeat.ticketStatus
                     existingSeat.supplies = newSeat.supplies
+                    shouldUpdate = true
                   }
+                }
+
+                if (shouldUpdate) {
+                  const currentActivityLog = existingSeat.activityLog || []
+                  existingSeat.activityLog = [...currentActivityLog, ...activityLogs]
                 }
               }
             }
@@ -853,6 +1080,71 @@ export const useVenueStore = create<VenueStore>()(
             canRedo: newFuture.length > 0,
           })
         }
+      },
+
+      addSeatNote: (zoneId, seatId, note, author = '我') => {
+        const state = get()
+        const zoneSeats = state.seats[zoneId]
+        if (!zoneSeats) return
+
+        const seat = zoneSeats.find((s) => s.id === seatId)
+        if (!seat) return
+
+        const newEntry = createActivityLogEntry('addNote', author, {
+          note,
+        })
+
+        const currentActivityLog = seat.activityLog || []
+        const newActivityLog = [...currentActivityLog, newEntry]
+
+        set((s) => ({
+          seats: {
+            ...s.seats,
+            [zoneId]: s.seats[zoneId]!.map((s) => (s.id === seatId ? { ...s, activityLog: newActivityLog } : s)),
+          },
+        }))
+      },
+
+      removeSeatNote: (zoneId, seatId, entryId) => {
+        const state = get()
+        const zoneSeats = state.seats[zoneId]
+        if (!zoneSeats) return
+
+        const seat = zoneSeats.find((s) => s.id === seatId)
+        if (!seat) return
+
+        const currentActivityLog = seat.activityLog || []
+        const entryToRemove = currentActivityLog.find((e) => e.id === entryId)
+        if (!entryToRemove || entryToRemove.type !== 'addNote') return
+
+        const newActivityLog = currentActivityLog.filter((e) => e.id !== entryId)
+
+        set((s) => ({
+          seats: {
+            ...s.seats,
+            [zoneId]: s.seats[zoneId]!.map((s) => (s.id === seatId ? { ...s, activityLog: newActivityLog } : s)),
+          },
+        }))
+      },
+
+      ensureActivityLogMigration: () => {
+        set((state) => {
+          const newSeats: Record<string, Seat[]> = {}
+          let needsUpdate = false
+
+          for (const [zoneId, zoneSeats] of Object.entries(state.seats)) {
+            newSeats[zoneId] = zoneSeats.map((seat) => {
+              if (!seat.activityLog) {
+                needsUpdate = true
+                return { ...seat, activityLog: [] }
+              }
+              return seat
+            })
+          }
+
+          if (!needsUpdate) return state
+          return { seats: newSeats }
+        })
       },
     }),
     {

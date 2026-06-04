@@ -1,5 +1,25 @@
 export type TicketStatus = 'none' | 'confirmed' | 'pending' | 'exchanged'
 
+export type ActivityLogType =
+  | 'assignMember'
+  | 'changeTicketStatus'
+  | 'toggleObstruction'
+  | 'updateSupplies'
+  | 'updateCheeringColor'
+  | 'addNote'
+  | 'clearSeat'
+
+export interface ActivityLogEntry {
+  id: string
+  timestamp: number
+  type: ActivityLogType
+  author: string
+  oldValue?: string | boolean
+  newValue?: string | boolean
+  fieldName?: string
+  note?: string
+}
+
 export interface Zone {
   id: string
   name: string
@@ -24,6 +44,7 @@ export interface Seat {
   obstructionNote: string
   ticketStatus: TicketStatus
   supplies: string
+  activityLog: ActivityLogEntry[]
 }
 
 export interface VenueData {
