@@ -1,12 +1,14 @@
 import { useState } from 'react'
-import { Sparkles, Plus } from 'lucide-react'
+import { Sparkles, Plus, Users } from 'lucide-react'
 import { useVenueStore } from '@/store/venueStore'
 import { ZoneCard, GlobalStats } from '@/components/ZoneCard'
 import { CreateZoneModal, DataActions } from '@/components/Modals'
+import { MemberImportModal } from '@/components/MemberImportModal'
 
 export default function Overview() {
   const zones = useVenueStore((s) => s.zones)
   const [modalOpen, setModalOpen] = useState(false)
+  const [importModalOpen, setImportModalOpen] = useState(false)
 
   return (
     <div className="min-h-screen bg-base bg-grid-pattern">
@@ -19,13 +21,20 @@ export default function Overview() {
           <p className="text-sm text-white/30">场馆座位分配 · 应援色标记 · 物资统筹 · 换票管理</p>
         </header>
 
-        <div className="flex items-center gap-3 mb-6">
+        <div className="flex items-center gap-3 mb-6 flex-wrap">
           <button
             onClick={() => setModalOpen(true)}
             className="flex items-center gap-1.5 px-4 py-2.5 rounded-lg bg-neon-pink text-white font-medium text-sm hover:bg-neon-pink/80 transition-colors"
             style={{ boxShadow: '0 0 20px rgba(255,46,151,0.3)' }}
           >
             <Plus size={16} /> 新增区域
+          </button>
+          <button
+            onClick={() => setImportModalOpen(true)}
+            className="flex items-center gap-1.5 px-4 py-2.5 rounded-lg bg-neon-purple text-white font-medium text-sm hover:bg-neon-purple/80 transition-colors"
+            style={{ boxShadow: '0 0 20px rgba(191,90,242,0.3)' }}
+          >
+            <Users size={16} /> 成员名单导入
           </button>
           <DataActions />
         </div>
@@ -59,6 +68,7 @@ export default function Overview() {
       </div>
 
       <CreateZoneModal open={modalOpen} onClose={() => setModalOpen(false)} />
+      <MemberImportModal open={importModalOpen} onClose={() => setImportModalOpen(false)} />
     </div>
   )
 }

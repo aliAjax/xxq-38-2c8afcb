@@ -2,6 +2,8 @@ import { create } from 'zustand'
 import { persist } from 'zustand/middleware'
 import type { Zone, Seat, VenueData, TicketStatus } from '@/types'
 
+export type { MemberImportItem }
+
 function generateId(): string {
   return Date.now().toString(36) + Math.random().toString(36).slice(2, 8)
 }
@@ -28,12 +30,22 @@ function createSeatsForZone(zone: Zone): Seat[] {
   return seats
 }
 
+interface MemberImportItem {
+  memberName: string
+  zoneName: string
+  seatNumber: string
+  cheeringColor: string
+  ticketStatus: TicketStatus
+  supplies: string
+}
+
 interface VenueStore extends VenueData {
   addZone: (name: string, rows: number, cols: number, color: string) => string
   removeZone: (zoneId: string) => void
   updateZone: (zoneId: string, updates: Partial<Pick<Zone, 'name' | 'color'>>) => void
   updateSeat: (zoneId: string, seatId: string, updates: Partial<Omit<Seat, 'id' | 'zoneId' | 'row' | 'col' | 'seatNumber'>>) => void
   batchUpdateSeats: (zoneId: string, seatIds: string[], updates: Partial<Omit<Seat, 'id' | 'zoneId' | 'row' | 'col' | 'seatNumber'>>) => void
+  batchImportMembers: (items: MemberImportItem[]) => { matched: number; unmatchedZones: string[]; unmatchedSeats: string[]; duplicateMembers: string[] }
   clearZoneSeats: (zoneId: string) => void
   exportData: () => string
   importData: (json: string) => boolean
@@ -109,6 +121,69 @@ export const useVenueStore = create<VenueStore>()(
             },
           }
         })
+      },
+
+      batchImportMembers: (items) => {
+        const { zones, seats } = get()
+        const zoneNameMap = new Map(zones.map((z) => [z.name.trim().toLowerCase(), z]))
+        const unmatchedZones = new Set<string>()
+        const unmatchedSeats: string[] = []
+        const duplicateMembers: string[] = []
+        const seenMembers = new Set<string>()
+        const updatesMap = new Map<string, Map<string, Partial<Seat>>>()
+
+        for (const item of items) {
+          const zoneKey = item.zoneName.trim().toLowerCase()
+          const zone = zoneNameMap.get(zoneKey)
+          if (!zone) {
+            unmatchedZones.add(item.zoneName)
+            continue
+          }
+
+          const zoneSeats = seats[zone.id] || []
+          const seat = zoneSeats.find((s) => s.seatNumber === item.seatNumber.trim())
+          if (!seat) {
+            unmatchedSeats.push(`${item.zoneName} ${item.seatNumber}`)
+            continue
+          }
+
+          const memberKey = item.memberName.trim()
+          if (seenMembers.has(memberKey)) {
+            if (!duplicateMembers.includes(memberKey)) {
+              duplicateMembers.push(memberKey)
+            }
+          }
+          seenMembers.add(memberKey)
+
+          if (!updatesMap.has(zone.id)) {
+            updatesMap.set(zone.id, new Map())
+          }
+          updatesMap.get(zone.id)!.set(seat.id, {
+            memberName: item.memberName.trim(),
+            cheeringColor: item.cheeringColor.trim(),
+            ticketStatus: item.ticketStatus,
+            supplies: item.supplies.trim(),
+          })
+        }
+
+        set((state) => {
+          const newSeats = { ...state.seats }
+          for (const [zoneId, seatUpdates] of updatesMap) {
+            const zoneSeats = newSeats[zoneId] || []
+            newSeats[zoneId] = zoneSeats.map((s) => {
+              const updates = seatUpdates.get(s.id)
+              return updates ? { ...s, ...updates } : s
+            })
+          }
+          return { seats: newSeats }
+        })
+
+        return {
+          matched: Array.from(updatesMap.values()).reduce((sum, m) => sum + m.size, 0),
+          unmatchedZones: Array.from(unmatchedZones),
+          unmatchedSeats,
+          duplicateMembers,
+        }
       },
 
       clearZoneSeats: (zoneId) => {
