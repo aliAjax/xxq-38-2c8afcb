@@ -1,0 +1,80 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  font-family: "Noto Sans SC", system-ui, sans-serif;
+  line-height: 1.5;
+  font-weight: 400;
+  font-synthesis: none;
+  text-rendering: optimizeLegibility;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  color-scheme: dark;
+}
+
+body {
+  margin: 0;
+  background-color: #0F0F1A;
+  color: #E0E0F0;
+  min-height: 100vh;
+}
+
+* {
+  scrollbar-width: thin;
+  scrollbar-color: #2D2D50 transparent;
+}
+
+*::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+*::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+*::-webkit-scrollbar-thumb {
+  background-color: #2D2D50;
+  border-radius: 3px;
+}
+
+*::-webkit-scrollbar-thumb:hover {
+  background-color: #3D3D60;
+}
+
+@layer utilities {
+  .text-glow-pink {
+    text-shadow: 0 0 10px rgba(255,46,151,0.5), 0 0 30px rgba(255,46,151,0.2);
+  }
+  .text-glow-cyan {
+    text-shadow: 0 0 10px rgba(0,245,255,0.5), 0 0 30px rgba(0,245,255,0.2);
+  }
+  .bg-grid-pattern {
+    background-image:
+      linear-gradient(rgba(255,255,255,0.03) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(255,255,255,0.03) 1px, transparent 1px);
+    background-size: 24px 24px;
+  }
+  .seat-cell {
+    @apply w-9 h-9 rounded flex items-center justify-center text-xs font-mono cursor-pointer transition-all duration-150 select-none border;
+  }
+  .seat-empty {
+    @apply border-dashed border-white/10 text-white/20 hover:border-white/25 hover:bg-white/[0.03];
+  }
+  .seat-occupied {
+    @apply border-solid text-white font-medium;
+  }
+  .seat-obstructed {
+    @apply ring-1 ring-yellow-400/50;
+  }
+  .seat-selected {
+    @apply ring-2 ring-white/70 scale-110 z-10;
+  }
+  .glass-panel {
+    @apply bg-surface/80 backdrop-blur-md border border-white/[0.06] rounded-xl;
+  }
+  .neon-border {
+    @apply border border-neon-pink/20;
+  }
+}
