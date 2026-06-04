@@ -1,10 +1,11 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import { Search, X, User, MapPin, Package, Ticket, ChevronDown } from 'lucide-react'
 import { useVenueStore, type SeatSearchResult, type SearchOptions } from '@/store/venueStore'
 import type { TicketStatus } from '@/types'
 
-const TICKET_OPTIONS: { value: TicketStatus; label: string }[] = [
-  { value: 'none', label: '全部' },
+const TICKET_OPTIONS: { value: TicketStatus | ''; label: string }[] = [
+  { value: '', label: '全部' },
+  { value: 'none', label: '未处理' },
   { value: 'confirmed', label: '已确认' },
   { value: 'pending', label: '待处理' },
   { value: 'exchanged', label: '已换票' },
@@ -28,22 +29,7 @@ export function SeatSearch({ zoneId, onResultClick, highlightedSeatIds, onHighli
 
   const searchSeats = useVenueStore((s) => s.searchSeats)
 
-  const handleSearch = () => {
-    const options: SearchOptions = {
-      memberName: memberName || undefined,
-      seatNumber: seatNumber || undefined,
-      supplies: supplies || undefined,
-      ticketStatus,
-    }
-    const results = searchSeats(zoneId, options)
-    setSearchResults(results)
-    setHasSearched(true)
-
-    const highlightedIds = new Set(results.map((r) => r.seat.id))
-    onHighlightChange(highlightedIds)
-  }
-
-  const handleClear = () => {
+  const handleClear = useCallback(() => {
     setMemberName('')
     setSeatNumber('')
     setSupplies('')
@@ -51,18 +37,29 @@ export function SeatSearch({ zoneId, onResultClick, highlightedSeatIds, onHighli
     setSearchResults([])
     setHasSearched(false)
     onHighlightChange(new Set())
-  }
+  }, [onHighlightChange])
 
   useEffect(() => {
     const hasAnyFilter = memberName || seatNumber || supplies || ticketStatus
     if (hasAnyFilter) {
-      handleSearch()
+      const options: SearchOptions = {
+        memberName: memberName || undefined,
+        seatNumber: seatNumber || undefined,
+        supplies: supplies || undefined,
+        ticketStatus,
+      }
+      const results = searchSeats(zoneId, options)
+      setSearchResults(results)
+      setHasSearched(true)
+
+      const highlightedIds = new Set(results.map((r) => r.seat.id))
+      onHighlightChange(highlightedIds)
     } else {
       setSearchResults([])
       setHasSearched(false)
       onHighlightChange(new Set())
     }
-  }, [memberName, seatNumber, supplies, ticketStatus, zoneId])
+  }, [memberName, seatNumber, supplies, ticketStatus, zoneId, searchSeats, onHighlightChange])
 
   const getFieldLabel = (field: string) => {
     switch (field) {
@@ -171,13 +168,13 @@ export function SeatSearch({ zoneId, onResultClick, highlightedSeatIds, onHighli
                 <span>换票状态</span>
               </div>
               <select
-                value={ticketStatus || ''}
-                onChange={(e) => setTicketStatus((e.target.value as TicketStatus) || undefined)}
+                value={ticketStatus ?? ''}
+                onChange={(e) => setTicketStatus(e.target.value as TicketStatus | undefined)}
                 className="w-full bg-surface-light border border-white/10 rounded-lg px-3 py-1.5 text-sm text-white focus:outline-none focus:border-neon-pink/50 transition-colors appearance-none cursor-pointer"
                 style={{ backgroundImage: 'none' }}
               >
                 {TICKET_OPTIONS.map((opt) => (
-                  <option key={opt.value} value={opt.value === 'none' ? '' : opt.value} className="bg-surface-light">
+                  <option key={opt.value} value={opt.value} className="bg-surface-light">
                     {opt.label}
                   </option>
                 ))}
