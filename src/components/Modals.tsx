@@ -1,6 +1,7 @@
 import { useState, useRef } from 'react'
 import { Download, Upload, Trash2, X } from 'lucide-react'
 import { useVenueStore } from '@/store/venueStore'
+import { ImportPreviewModal } from './ImportPreviewModal'
 
 const PRESET_COLORS = [
   '#FF2E97', '#00F5FF', '#FFE600', '#39FF14',
@@ -178,10 +179,12 @@ export function CreateZoneModal({ open, onClose }: { open: boolean; onClose: () 
 
 export function DataActions() {
   const exportData = useVenueStore((s) => s.exportData)
-  const importData = useVenueStore((s) => s.importData)
   const clearAll = useVenueStore((s) => s.clearAll)
   const [showConfirm, setShowConfirm] = useState(false)
   const fileRef = useRef<HTMLInputElement>(null)
+  const [importPreviewOpen, setImportPreviewOpen] = useState(false)
+  const [importJsonContent, setImportJsonContent] = useState('')
+  const [importFileName, setImportFileName] = useState('')
 
   const handleExport = () => {
     const data = exportData()
@@ -203,13 +206,24 @@ export function DataActions() {
     if (!file) return
     const reader = new FileReader()
     reader.onload = () => {
-      const result = importData(reader.result as string)
-      if (!result) {
-        alert('导入失败：数据格式无效')
-      }
+      setImportJsonContent(reader.result as string)
+      setImportFileName(file.name)
+      setImportPreviewOpen(true)
     }
     reader.readAsText(file)
     e.target.value = ''
+  }
+
+  const handleImportSuccess = () => {
+    setImportPreviewOpen(false)
+    setImportJsonContent('')
+    setImportFileName('')
+  }
+
+  const handleImportClose = () => {
+    setImportPreviewOpen(false)
+    setImportJsonContent('')
+    setImportFileName('')
   }
 
   return (
@@ -243,6 +257,14 @@ export function DataActions() {
           </button>
         )}
       </div>
+
+      <ImportPreviewModal
+        open={importPreviewOpen}
+        jsonContent={importJsonContent}
+        fileName={importFileName}
+        onClose={handleImportClose}
+        onSuccess={handleImportSuccess}
+      />
     </>
   )
 }

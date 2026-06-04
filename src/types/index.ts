@@ -30,3 +30,43 @@ export interface VenueData {
   zones: Zone[]
   seats: Record<string, Seat[]>
 }
+
+export type ImportStrategy = 'overwrite' | 'mergeEmpty' | 'selective'
+
+export interface SeatConflictInfo {
+  seatId: string
+  seatNumber: string
+  existingMember: string
+  newMember: string
+  willBeOverwritten: boolean
+}
+
+export interface ZoneConflictInfo {
+  zone: Zone
+  status: 'new' | 'overwrite' | 'merge'
+  totalSeats: number
+  assignedSeats: number
+  conflictSeats: SeatConflictInfo[]
+  selected: boolean
+}
+
+export interface InvalidSeatInfo {
+  zoneName: string
+  seatNumber: string
+  reason: string
+}
+
+export interface ImportPreviewResult {
+  isValid: boolean
+  formatErrors: string[]
+  newZones: ZoneConflictInfo[]
+  overwriteZones: ZoneConflictInfo[]
+  mergeZones: ZoneConflictInfo[]
+  invalidSeats: InvalidSeatInfo[]
+  duplicateMembers: string[]
+  totalNew: number
+  totalOverwrite: number
+  totalMerge: number
+  totalInvalid: number
+  parsedData: VenueData | null
+}

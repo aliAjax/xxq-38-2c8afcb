@@ -1,6 +1,6 @@
 import { create } from 'zustand'
 import { persist } from 'zustand/middleware'
-import type { Zone, Seat, VenueData, TicketStatus } from '@/types'
+import type { Zone, Seat, VenueData, TicketStatus, ImportPreviewResult, ImportStrategy, ZoneConflictInfo, SeatConflictInfo, InvalidSeatInfo } from '@/types'
 
 export type { MemberImportItem }
 
@@ -82,6 +82,8 @@ interface VenueStore extends VenueData {
   clearZoneSeats: (zoneId: string, recordHistory?: boolean) => void
   exportData: () => string
   importData: (json: string, recordHistory?: boolean) => boolean
+  previewImportData: (json: string, strategy: ImportStrategy) => ImportPreviewResult
+  executeConfirmedImport: (preview: ImportPreviewResult, strategy: ImportStrategy, selectedZoneIds: string[], recordHistory?: boolean) => { success: boolean; message: string }
   clearAll: (recordHistory?: boolean) => void
   getZoneSeats: (zoneId: string) => Seat[]
   getZoneStats: (zoneId: string) => { total: number; assigned: number; obstructed: number; ticketStats: Record<TicketStatus, number> }
@@ -394,6 +396,268 @@ export const useVenueStore = create<VenueStore>()(
           return true
         } catch {
           return false
+        }
+      },
+
+      previewImportData: (json, strategy) => {
+        const formatErrors: string[] = []
+        let parsedData: VenueData | null = null
+
+        try {
+          parsedData = JSON.parse(json) as VenueData
+        } catch (e) {
+          formatErrors.push('JSON 格式解析失败：' + (e instanceof Error ? e.message : '未知错误'))
+          return {
+            isValid: false,
+            formatErrors,
+            newZones: [],
+            overwriteZones: [],
+            mergeZones: [],
+            invalidSeats: [],
+            duplicateMembers: [],
+            totalNew: 0,
+            totalOverwrite: 0,
+            totalMerge: 0,
+            totalInvalid: 0,
+            parsedData: null,
+          }
+        }
+
+        if (!parsedData.zones || !Array.isArray(parsedData.zones)) {
+          formatErrors.push('数据格式错误：缺少 zones 字段或格式不正确')
+        }
+        if (!parsedData.seats || typeof parsedData.seats !== 'object') {
+          formatErrors.push('数据格式错误：缺少 seats 字段或格式不正确')
+        }
+
+        if (formatErrors.length > 0) {
+          return {
+            isValid: false,
+            formatErrors,
+            newZones: [],
+            overwriteZones: [],
+            mergeZones: [],
+            invalidSeats: [],
+            duplicateMembers: [],
+            totalNew: 0,
+            totalOverwrite: 0,
+            totalMerge: 0,
+            totalInvalid: 0,
+            parsedData: null,
+          }
+        }
+
+        const { zones: currentZones, seats: currentSeats } = get()
+        const currentZoneNameMap = new Map(currentZones.map((z) => [z.name.trim().toLowerCase(), z]))
+        const newZones: ZoneConflictInfo[] = []
+        const overwriteZones: ZoneConflictInfo[] = []
+        const mergeZones: ZoneConflictInfo[] = []
+        const invalidSeats: InvalidSeatInfo[] = []
+        const allMembers = new Set<string>()
+        const duplicateMembers = new Set<string>()
+
+        for (const zone of parsedData.zones) {
+          if (!zone.id || !zone.name || zone.rows <= 0 || zone.cols <= 0) {
+            formatErrors.push(`区域数据无效：${JSON.stringify(zone)}`)
+            continue
+          }
+
+          const zoneKey = zone.name.trim().toLowerCase()
+          const existingZone = currentZoneNameMap.get(zoneKey)
+          const zoneSeats = parsedData.seats[zone.id] || []
+
+          let assignedCount = 0
+          const conflictSeats: SeatConflictInfo[] = []
+
+          for (const seat of zoneSeats) {
+            if (seat.memberName) {
+              assignedCount++
+              const memberKey = seat.memberName.trim()
+              if (memberKey) {
+                if (allMembers.has(memberKey)) {
+                  duplicateMembers.add(memberKey)
+                }
+                allMembers.add(memberKey)
+              }
+            }
+
+            if (existingZone) {
+              const existingSeats = currentSeats[existingZone.id] || []
+              const existingSeat = existingSeats.find((s) => s.seatNumber === seat.seatNumber)
+
+              if (!existingSeat) {
+                invalidSeats.push({
+                  zoneName: zone.name,
+                  seatNumber: seat.seatNumber,
+                  reason: '座位号不存在于当前区域',
+                })
+                continue
+              }
+
+              if (existingSeat.memberName && seat.memberName && existingSeat.memberName !== seat.memberName) {
+                conflictSeats.push({
+                  seatId: existingSeat.id,
+                  seatNumber: seat.seatNumber,
+                  existingMember: existingSeat.memberName,
+                  newMember: seat.memberName,
+                  willBeOverwritten: strategy === 'overwrite',
+                })
+              }
+            }
+          }
+
+          const zoneInfo: ZoneConflictInfo = {
+            zone,
+            status: existingZone ? (strategy === 'overwrite' ? 'overwrite' : 'merge') : 'new',
+            totalSeats: zoneSeats.length,
+            assignedSeats: assignedCount,
+            conflictSeats,
+            selected: true,
+          }
+
+          if (!existingZone) {
+            newZones.push(zoneInfo)
+          } else if (strategy === 'overwrite') {
+            overwriteZones.push(zoneInfo)
+          } else {
+            mergeZones.push(zoneInfo)
+          }
+        }
+
+        for (const [zoneId, seats] of Object.entries(parsedData.seats)) {
+          const zone = parsedData.zones.find((z) => z.id === zoneId)
+          if (!zone) {
+            for (const seat of seats) {
+              invalidSeats.push({
+                zoneName: `未知区域(${zoneId})`,
+                seatNumber: seat.seatNumber,
+                reason: '所属区域不存在',
+              })
+            }
+          }
+        }
+
+        const totalNew = newZones.reduce((sum, z) => sum + z.assignedSeats, 0)
+        const totalOverwrite = overwriteZones.reduce((sum, z) => sum + z.conflictSeats.length, 0)
+        const totalMerge = mergeZones.reduce((sum, z) => sum + z.assignedSeats - z.conflictSeats.length, 0)
+        const totalInvalid = invalidSeats.length
+
+        return {
+          isValid: formatErrors.length === 0,
+          formatErrors,
+          newZones,
+          overwriteZones,
+          mergeZones,
+          invalidSeats,
+          duplicateMembers: Array.from(duplicateMembers),
+          totalNew,
+          totalOverwrite,
+          totalMerge,
+          totalInvalid,
+          parsedData,
+        }
+      },
+
+      executeConfirmedImport: (preview, strategy, selectedZoneIds, recordHistory = true) => {
+        if (!preview.parsedData) {
+          return { success: false, message: '没有有效的解析数据' }
+        }
+
+        if (!preview.isValid) {
+          return { success: false, message: '数据格式有错误，无法导入' }
+        }
+
+        const currentState = get()
+        const backupSeats = cloneSeats(currentState.seats)
+        const backupZones = currentState.zones.map((z) => ({ ...z }))
+
+        try {
+          const { zones: parsedZones, seats: parsedSeats } = preview.parsedData
+          const selectedZoneIdSet = new Set(selectedZoneIds)
+
+          const currentZoneNameMap = new Map(currentState.zones.map((z) => [z.name.trim().toLowerCase(), z]))
+          const newZones: Zone[] = []
+          const updatedSeats: Record<string, Seat[]> = { ...currentState.seats }
+          const updatedZones = [...currentState.zones]
+
+          for (const zone of parsedZones) {
+            if (!selectedZoneIdSet.has(zone.id)) continue
+
+            const zoneKey = zone.name.trim().toLowerCase()
+            const existingZone = currentZoneNameMap.get(zoneKey)
+            const zoneSeats = parsedSeats[zone.id] || []
+
+            if (!existingZone) {
+              const layout = {
+                x: zone.x ?? 50 + (updatedZones.length % 4) * 180,
+                y: zone.y ?? 50 + Math.floor(updatedZones.length / 4) * 120,
+                width: zone.width ?? Math.max(120, zone.cols * 30),
+                height: zone.height ?? Math.max(80, zone.rows * 25),
+              }
+              const newZone = { ...zone, ...layout }
+              newZones.push(newZone)
+              updatedZones.push(newZone)
+              updatedSeats[zone.id] = zoneSeats
+            } else {
+              const existingSeats = updatedSeats[existingZone.id] || []
+              const seatNumberMap = new Map(existingSeats.map((s) => [s.seatNumber, s]))
+
+              for (const newSeat of zoneSeats) {
+                const existingSeat = seatNumberMap.get(newSeat.seatNumber)
+                if (!existingSeat) continue
+
+                if (strategy === 'overwrite') {
+                  Object.assign(existingSeat, {
+                    memberName: newSeat.memberName,
+                    cheeringColor: newSeat.cheeringColor,
+                    ticketStatus: newSeat.ticketStatus,
+                    supplies: newSeat.supplies,
+                  })
+                } else if (strategy === 'mergeEmpty') {
+                  if (!existingSeat.memberName) {
+                    Object.assign(existingSeat, {
+                      memberName: newSeat.memberName,
+                      cheeringColor: newSeat.cheeringColor,
+                      ticketStatus: newSeat.ticketStatus,
+                      supplies: newSeat.supplies,
+                    })
+                  }
+                }
+              }
+            }
+          }
+
+          if (recordHistory) {
+            set((s) => ({
+              past: [...s.past, {
+                type: 'importData',
+                before: backupSeats,
+                beforeZones: backupZones,
+                label: '导入数据'
+              }],
+              future: [],
+              canUndo: true,
+              canRedo: false,
+            }))
+          }
+
+          set({ zones: updatedZones, seats: updatedSeats })
+
+          const importedZones = selectedZoneIds.length
+          const importedSeats = [...preview.newZones, ...preview.overwriteZones, ...preview.mergeZones]
+            .filter((z) => selectedZoneIdSet.has(z.zone.id))
+            .reduce((sum, z) => sum + z.assignedSeats, 0)
+
+          return {
+            success: true,
+            message: `成功导入 ${importedZones} 个区域，${importedSeats} 条座位数据`
+          }
+        } catch (e) {
+          set({ zones: backupZones, seats: backupSeats })
+          return {
+            success: false,
+            message: '导入失败：' + (e instanceof Error ? e.message : '未知错误')
+          }
         }
       },
 
