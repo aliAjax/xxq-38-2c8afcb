@@ -1,11 +1,13 @@
 import { useState } from 'react'
-import { Sparkles, Plus, Users } from 'lucide-react'
+import { useNavigate } from 'react-router-dom'
+import { Sparkles, Plus, Users, Package } from 'lucide-react'
 import { useVenueStore } from '@/store/venueStore'
 import { ZoneCard, GlobalStats } from '@/components/ZoneCard'
 import { CreateZoneModal, DataActions } from '@/components/Modals'
 import { MemberImportModal } from '@/components/MemberImportModal'
 
 export default function Overview() {
+  const navigate = useNavigate()
   const zones = useVenueStore((s) => s.zones)
   const [modalOpen, setModalOpen] = useState(false)
   const [importModalOpen, setImportModalOpen] = useState(false)
@@ -35,6 +37,13 @@ export default function Overview() {
             style={{ boxShadow: '0 0 20px rgba(191,90,242,0.3)' }}
           >
             <Users size={16} /> 成员名单导入
+          </button>
+          <button
+            onClick={() => navigate('/supplies')}
+            className="flex items-center gap-1.5 px-4 py-2.5 rounded-lg bg-neon-cyan text-white font-medium text-sm hover:bg-neon-cyan/80 transition-colors"
+            style={{ boxShadow: '0 0 20px rgba(0,245,255,0.3)' }}
+          >
+            <Package size={16} /> 物资汇总
           </button>
           <DataActions />
         </div>
