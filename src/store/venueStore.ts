@@ -246,10 +246,9 @@ export const useVenueStore = create<VenueStore>()(
 
         if ('obstructionNote' in updates && seat.obstructionNote !== updates.obstructionNote && seat.isObstructed) {
           activityLogs.push(createActivityLogEntry('toggleObstruction', author, {
-            oldValue: seat.isObstructed,
-            newValue: seat.isObstructed,
+            oldValue: seat.obstructionNote || undefined,
+            newValue: updates.obstructionNote || undefined,
             fieldName: 'obstructionNote',
-            note: updates.obstructionNote,
           }))
         }
 
@@ -350,10 +349,9 @@ export const useVenueStore = create<VenueStore>()(
 
           if ('obstructionNote' in updates && s.obstructionNote !== updates.obstructionNote && s.isObstructed) {
             activityLogs.push(createActivityLogEntry('toggleObstruction', author, {
-              oldValue: s.isObstructed,
-              newValue: s.isObstructed,
+              oldValue: s.obstructionNote || undefined,
+              newValue: updates.obstructionNote || undefined,
               fieldName: 'obstructionNote',
-              note: updates.obstructionNote,
             }))
           }
 

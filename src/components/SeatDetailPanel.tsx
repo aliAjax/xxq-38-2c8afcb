@@ -329,16 +329,17 @@ function getActivityDescription(entry: ActivityLogEntry): React.ReactNode {
           <div>
             <span className="text-xs">
               遮挡原因：
-              {entry.oldValue !== undefined && entry.oldValue !== '' ? (
+              {entry.oldValue ? (
                 <>
                   <span className="line-through text-white/30">{String(entry.oldValue)}</span>
                   {' → '}
                 </>
               ) : null}
-              {entry.newValue !== undefined && entry.newValue !== '' ? (
+              {entry.newValue ? (
                 <span className="text-yellow-400">{String(entry.newValue)}</span>
-              ) : null}
-              {entry.note && <span className="text-yellow-400">{entry.note}</span>}
+              ) : (
+                <span className="text-white/30">已清除</span>
+              )}
             </span>
           </div>
         )
