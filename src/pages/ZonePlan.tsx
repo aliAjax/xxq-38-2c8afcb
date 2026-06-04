@@ -1,6 +1,6 @@
 import { useState, useMemo, useEffect } from 'react'
 import { useParams, useNavigate, useSearchParams } from 'react-router-dom'
-import { ArrowLeft, ChevronRight, RotateCcw } from 'lucide-react'
+import { ArrowLeft, ChevronRight, RotateCcw, Printer } from 'lucide-react'
 import { useVenueStore } from '@/store/venueStore'
 import { SeatDetailPanel } from '@/components/SeatDetailPanel'
 import { BatchActions } from '@/components/BatchActions'
@@ -115,6 +115,13 @@ export default function ZonePlan() {
         </div>
 
         <UndoRedoButtons />
+
+        <button
+          onClick={() => navigate(`/print/${zoneId}`)}
+          className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-white/40 hover:text-white text-xs transition-all"
+        >
+          <Printer size={12} /> 打印
+        </button>
 
         <button
           onClick={handleClearZone}

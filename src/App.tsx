@@ -3,6 +3,7 @@ import { BrowserRouter as Router, Routes, Route } from "react-router-dom";
 import Overview from "@/pages/Overview";
 import ZonePlan from "@/pages/ZonePlan";
 import SuppliesSummary from "@/pages/SuppliesSummary";
+import PrintView from "@/pages/PrintView";
 import { useVenueStore } from '@/store/venueStore'
 
 export default function App() {
@@ -20,6 +21,8 @@ export default function App() {
         <Route path="/" element={<Overview />} />
         <Route path="/zone/:zoneId" element={<ZonePlan />} />
         <Route path="/supplies" element={<SuppliesSummary />} />
+        <Route path="/print" element={<PrintView />} />
+        <Route path="/print/:zoneId" element={<PrintView />} />
       </Routes>
     </Router>
   );

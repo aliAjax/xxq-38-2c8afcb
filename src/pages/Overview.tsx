@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { Sparkles, Plus, Users, Package, LayoutGrid, Map } from 'lucide-react'
+import { Sparkles, Plus, Users, Package, LayoutGrid, Map, Printer } from 'lucide-react'
 import { useVenueStore } from '@/store/venueStore'
 import { ZoneCard, GlobalStats } from '@/components/ZoneCard'
 import { CreateZoneModal, DataActions } from '@/components/Modals'
@@ -50,6 +50,13 @@ export default function Overview() {
             style={{ boxShadow: '0 0 20px rgba(0,245,255,0.3)' }}
           >
             <Package size={16} /> 物资汇总
+          </button>
+
+          <button
+            onClick={() => navigate('/print')}
+            className="flex items-center gap-1.5 px-4 py-2.5 rounded-lg bg-surface-light border border-white/[0.06] text-white/60 font-medium text-sm hover:bg-surface-lighter hover:text-white transition-all"
+          >
+            <Printer size={16} /> 打印视图
           </button>
 
           <div className="ml-auto flex items-center gap-1 bg-surface-light rounded-lg p-1">
