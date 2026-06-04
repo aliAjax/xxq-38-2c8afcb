@@ -133,6 +133,14 @@ export const useVenueStore = create<VenueStore>()(
         const updatesMap = new Map<string, Map<string, Partial<Seat>>>()
 
         for (const item of items) {
+          const memberKey = item.memberName.trim()
+          if (memberKey && seenMembers.has(memberKey)) {
+            if (!duplicateMembers.includes(memberKey)) {
+              duplicateMembers.push(memberKey)
+            }
+          }
+          if (memberKey) seenMembers.add(memberKey)
+
           const zoneKey = item.zoneName.trim().toLowerCase()
           const zone = zoneNameMap.get(zoneKey)
           if (!zone) {
@@ -146,14 +154,6 @@ export const useVenueStore = create<VenueStore>()(
             unmatchedSeats.push(`${item.zoneName} ${item.seatNumber}`)
             continue
           }
-
-          const memberKey = item.memberName.trim()
-          if (seenMembers.has(memberKey)) {
-            if (!duplicateMembers.includes(memberKey)) {
-              duplicateMembers.push(memberKey)
-            }
-          }
-          seenMembers.add(memberKey)
 
           if (!updatesMap.has(zone.id)) {
             updatesMap.set(zone.id, new Map())

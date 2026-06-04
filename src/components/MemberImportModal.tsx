@@ -102,6 +102,14 @@ export function MemberImportModal({ open, onClose }: { open: boolean; onClose: (
     let matched = 0
 
     for (const item of items) {
+      const memberKey = item.memberName.trim()
+      if (memberKey && seenMembers.has(memberKey)) {
+        if (!duplicateMembers.includes(memberKey)) {
+          duplicateMembers.push(memberKey)
+        }
+      }
+      if (memberKey) seenMembers.add(memberKey)
+
       const zoneKey = item.zoneName.trim().toLowerCase()
       const zone = zoneNameMap.get(zoneKey)
       if (!zone) {
@@ -116,13 +124,6 @@ export function MemberImportModal({ open, onClose }: { open: boolean; onClose: (
         continue
       }
 
-      const memberKey = item.memberName.trim()
-      if (seenMembers.has(memberKey)) {
-        if (!duplicateMembers.includes(memberKey)) {
-          duplicateMembers.push(memberKey)
-        }
-      }
-      seenMembers.add(memberKey)
       matched++
     }
 
