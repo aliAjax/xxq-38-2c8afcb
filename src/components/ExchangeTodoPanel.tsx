@@ -28,7 +28,7 @@ export function ExchangeTodoPanel() {
     for (const zone of zones) {
       const seats = allSeats[zone.id] || []
       for (const seat of seats) {
-        if (seat.memberName && (seat.ticketStatus === 'pending' || seat.ticketStatus === 'confirmed')) {
+        if (seat.ticketStatus === 'pending' || seat.ticketStatus === 'confirmed') {
           result.push({
             ...seat,
             zoneName: zone.name,
@@ -212,7 +212,7 @@ function SeatItem({
       <Ticket size={12} className="text-white/20 shrink-0" />
       <div className="flex-1 min-w-0">
         <div className="flex items-center gap-1.5">
-          <span className="text-xs text-white/70 truncate">{seat.memberName}</span>
+          <span className="text-xs text-white/70 truncate">{seat.memberName || '未分配'}</span>
           <span className="text-[10px] font-mono text-white/25 shrink-0">#{seat.seatNumber}</span>
         </div>
         <div className="flex items-center gap-1">
