@@ -183,7 +183,10 @@ export function SeatDetailPanel({ zoneId, seatId, onClose }: SeatDetailPanelProp
         <FieldGroup icon={<Eye size={14} />} label="视线遮挡">
           <div className="flex items-center gap-3 mb-2">
             <button
-              onClick={() => handleUpdate({ isObstructed: !seat.isObstructed })}
+              onClick={() => handleUpdate({
+                isObstructed: !seat.isObstructed,
+                ...(seat.isObstructed ? { obstructionNote: '' } : {}),
+              })}
               className={`relative w-10 h-5 rounded-full transition-colors ${seat.isObstructed ? 'bg-yellow-400/40' : 'bg-surface-lighter'}`}
             >
               <span
@@ -321,6 +324,25 @@ function getActivityDescription(entry: ActivityLogEntry): React.ReactNode {
         </div>
       )
     case 'toggleObstruction':
+      if (entry.fieldName === 'obstructionNote') {
+        return (
+          <div>
+            <span className="text-xs">
+              遮挡原因：
+              {entry.oldValue !== undefined && entry.oldValue !== '' ? (
+                <>
+                  <span className="line-through text-white/30">{String(entry.oldValue)}</span>
+                  {' → '}
+                </>
+              ) : null}
+              {entry.newValue !== undefined && entry.newValue !== '' ? (
+                <span className="text-yellow-400">{String(entry.newValue)}</span>
+              ) : null}
+              {entry.note && <span className="text-yellow-400">{entry.note}</span>}
+            </span>
+          </div>
+        )
+      }
       return (
         <div>
           <span className="text-xs">

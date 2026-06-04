@@ -240,6 +240,15 @@ export const useVenueStore = create<VenueStore>()(
             oldValue: seat.isObstructed,
             newValue: updates.isObstructed,
             fieldName: 'isObstructed',
+            note: updates.isObstructed ? (updates.obstructionNote || seat.obstructionNote) : undefined,
+          }))
+        }
+
+        if ('obstructionNote' in updates && seat.obstructionNote !== updates.obstructionNote && seat.isObstructed) {
+          activityLogs.push(createActivityLogEntry('toggleObstruction', author, {
+            oldValue: seat.isObstructed,
+            newValue: seat.isObstructed,
+            fieldName: 'obstructionNote',
             note: updates.obstructionNote,
           }))
         }
@@ -327,6 +336,24 @@ export const useVenueStore = create<VenueStore>()(
               oldValue: s.ticketStatus,
               newValue: updates.ticketStatus,
               fieldName: 'ticketStatus',
+            }))
+          }
+
+          if ('isObstructed' in updates && s.isObstructed !== updates.isObstructed) {
+            activityLogs.push(createActivityLogEntry('toggleObstruction', author, {
+              oldValue: s.isObstructed,
+              newValue: updates.isObstructed,
+              fieldName: 'isObstructed',
+              note: updates.isObstructed ? (updates.obstructionNote || s.obstructionNote) : undefined,
+            }))
+          }
+
+          if ('obstructionNote' in updates && s.obstructionNote !== updates.obstructionNote && s.isObstructed) {
+            activityLogs.push(createActivityLogEntry('toggleObstruction', author, {
+              oldValue: s.isObstructed,
+              newValue: s.isObstructed,
+              fieldName: 'obstructionNote',
+              note: updates.obstructionNote,
             }))
           }
 
