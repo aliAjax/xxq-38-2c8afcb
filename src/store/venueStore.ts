@@ -56,6 +56,7 @@ interface VenueStore extends VenueData {
   addZone: (name: string, rows: number, cols: number, color: string) => string
   removeZone: (zoneId: string) => void
   updateZone: (zoneId: string, updates: Partial<Pick<Zone, 'name' | 'color'>>) => void
+  updateZoneLayout: (zoneId: string, updates: Partial<Pick<Zone, 'x' | 'y' | 'width' | 'height' | 'color'>>) => void
   updateSeat: (zoneId: string, seatId: string, updates: Partial<Omit<Seat, 'id' | 'zoneId' | 'row' | 'col' | 'seatNumber'>>) => void
   batchUpdateSeats: (zoneId: string, seatIds: string[], updates: Partial<Omit<Seat, 'id' | 'zoneId' | 'row' | 'col' | 'seatNumber'>>) => void
   batchImportMembers: (items: MemberImportItem[]) => { matched: number; unmatchedZones: string[]; unmatchedSeats: string[]; duplicateMembers: string[] }
@@ -67,6 +68,8 @@ interface VenueStore extends VenueData {
   getZoneStats: (zoneId: string) => { total: number; assigned: number; obstructed: number; ticketStats: Record<TicketStatus, number> }
   getGlobalStats: () => { totalZones: number; totalSeats: number; totalAssigned: number; totalObstructed: number; ticketStats: Record<TicketStatus, number> }
   searchSeats: (zoneId: string, options: SearchOptions) => SeatSearchResult[]
+  resetZoneLayouts: () => void
+  ensureZoneLayouts: () => void
 }
 
 const defaultTicketStats: Record<TicketStatus, number> = {
@@ -84,7 +87,12 @@ export const useVenueStore = create<VenueStore>()(
 
       addZone: (name, rows, cols, color) => {
         const id = generateId()
-        const zone: Zone = { id, name, rows, cols, color }
+        const existingZones = get().zones
+        const defaultWidth = Math.max(120, cols * 30)
+        const defaultHeight = Math.max(80, rows * 25)
+        const defaultX = 50 + (existingZones.length % 4) * 180
+        const defaultY = 50 + Math.floor(existingZones.length / 4) * 120
+        const zone: Zone = { id, name, rows, cols, color, x: defaultX, y: defaultY, width: defaultWidth, height: defaultHeight }
         const newSeats = createSeatsForZone(zone)
         set((state) => ({
           zones: [...state.zones, zone],
@@ -107,6 +115,40 @@ export const useVenueStore = create<VenueStore>()(
       updateZone: (zoneId, updates) => {
         set((state) => ({
           zones: state.zones.map((z) => (z.id === zoneId ? { ...z, ...updates } : z)),
+        }))
+      },
+
+      updateZoneLayout: (zoneId, updates) => {
+        set((state) => ({
+          zones: state.zones.map((z) => (z.id === zoneId ? { ...z, ...updates } : z)),
+        }))
+      },
+
+      resetZoneLayouts: () => {
+        set((state) => ({
+          zones: state.zones.map((zone, index) => ({
+            ...zone,
+            x: 50 + (index % 4) * 180,
+            y: 50 + Math.floor(index / 4) * 120,
+            width: Math.max(120, zone.cols * 30),
+            height: Math.max(80, zone.rows * 25),
+          })),
+        }))
+      },
+
+      ensureZoneLayouts: () => {
+        set((state) => ({
+          zones: state.zones.map((zone, index) => {
+            const hasLayout = zone.x !== undefined && zone.y !== undefined && zone.width !== undefined && zone.height !== undefined
+            if (hasLayout) return zone
+            return {
+              ...zone,
+              x: 50 + (index % 4) * 180,
+              y: 50 + Math.floor(index / 4) * 120,
+              width: Math.max(120, zone.cols * 30),
+              height: Math.max(80, zone.rows * 25),
+            }
+          }),
         }))
       },
 
@@ -222,7 +264,18 @@ export const useVenueStore = create<VenueStore>()(
         try {
           const data = JSON.parse(json) as VenueData
           if (!data.zones || !data.seats) return false
-          set({ zones: data.zones, seats: data.seats })
+          const zonesWithLayout = data.zones.map((zone, index) => {
+            const hasLayout = zone.x !== undefined && zone.y !== undefined && zone.width !== undefined && zone.height !== undefined
+            if (hasLayout) return zone
+            return {
+              ...zone,
+              x: 50 + (index % 4) * 180,
+              y: 50 + Math.floor(index / 4) * 120,
+              width: Math.max(120, zone.cols * 30),
+              height: Math.max(80, zone.rows * 25),
+            }
+          })
+          set({ zones: zonesWithLayout, seats: data.seats })
           return true
         } catch {
           return false

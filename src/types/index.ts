@@ -6,6 +6,10 @@ export interface Zone {
   rows: number
   cols: number
   color: string
+  x: number
+  y: number
+  width: number
+  height: number
 }
 
 export interface Seat {

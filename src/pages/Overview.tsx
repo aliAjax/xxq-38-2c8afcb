@@ -1,17 +1,21 @@
 import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { Sparkles, Plus, Users, Package } from 'lucide-react'
+import { Sparkles, Plus, Users, Package, LayoutGrid, Map } from 'lucide-react'
 import { useVenueStore } from '@/store/venueStore'
 import { ZoneCard, GlobalStats } from '@/components/ZoneCard'
 import { CreateZoneModal, DataActions } from '@/components/Modals'
 import { MemberImportModal } from '@/components/MemberImportModal'
 import { ExchangeTodoPanel } from '@/components/ExchangeTodoPanel'
+import { FloorPlanEditor } from '@/components/FloorPlanEditor'
+
+type ViewMode = 'list' | 'floorplan'
 
 export default function Overview() {
   const navigate = useNavigate()
   const zones = useVenueStore((s) => s.zones)
   const [modalOpen, setModalOpen] = useState(false)
   const [importModalOpen, setImportModalOpen] = useState(false)
+  const [viewMode, setViewMode] = useState<ViewMode>('list')
 
   return (
     <div className="min-h-screen bg-base bg-grid-pattern">
@@ -46,6 +50,32 @@ export default function Overview() {
           >
             <Package size={16} /> 物资汇总
           </button>
+
+          <div className="ml-auto flex items-center gap-1 bg-surface-light rounded-lg p-1">
+            <button
+              onClick={() => setViewMode('list')}
+              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-medium transition-all ${
+                viewMode === 'list'
+                  ? 'bg-neon-cyan text-white'
+                  : 'text-white/50 hover:text-white hover:bg-surface-lighter'
+              }`}
+            >
+              <LayoutGrid size={14} />
+              列表视图
+            </button>
+            <button
+              onClick={() => setViewMode('floorplan')}
+              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-medium transition-all ${
+                viewMode === 'floorplan'
+                  ? 'bg-neon-cyan text-white'
+                  : 'text-white/50 hover:text-white hover:bg-surface-lighter'
+              }`}
+            >
+              <Map size={14} />
+              平面图
+            </button>
+          </div>
+
           <DataActions />
         </div>
 
@@ -62,12 +92,14 @@ export default function Overview() {
                   <Plus size={14} /> 创建第一个区域
                 </button>
               </div>
-            ) : (
+            ) : viewMode === 'list' ? (
               <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-4">
                 {zones.map((zone) => (
                   <ZoneCard key={zone.id} zoneId={zone.id} />
                 ))}
               </div>
+            ) : (
+              <FloorPlanEditor />
             )}
           </div>
 
