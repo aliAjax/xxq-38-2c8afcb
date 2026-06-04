@@ -1,6 +1,6 @@
 import { useState, useMemo } from 'react'
 import { useParams, useNavigate, useSearchParams } from 'react-router-dom'
-import { ArrowLeft, Printer, Settings, X, User, Palette, Ticket, Eye, Package, Download } from 'lucide-react'
+import { ArrowLeft, Printer, Settings, X, User, Palette, Ticket, Eye, Package } from 'lucide-react'
 import { useVenueStore } from '@/store/venueStore'
 import type { Seat, Zone, TicketStatus } from '@/types'
 
@@ -12,13 +12,6 @@ export interface PrintOptions {
   showSupplies: boolean
   layout: 'overview' | 'single-zone'
   zoneId?: string
-}
-
-const TICKET_STATUS_LABELS: Record<TicketStatus, string> = {
-  none: '未处理',
-  confirmed: '已确认',
-  pending: '待处理',
-  exchanged: '已换票',
 }
 
 const TICKET_STATUS_COLORS: Record<TicketStatus, string> = {
@@ -284,7 +277,6 @@ function ZonePrintSection({ zone, seats, options }: { zone: Zone; seats: Seat[];
                     key={col}
                     seat={seat}
                     options={options}
-                    zoneColor={zone.color}
                   />
                 )
               })}
@@ -296,7 +288,7 @@ function ZonePrintSection({ zone, seats, options }: { zone: Zone; seats: Seat[];
   )
 }
 
-function PrintSeatCell({ seat, options, zoneColor }: { seat: Seat; options: PrintOptions; zoneColor: string }) {
+function PrintSeatCell({ seat, options }: { seat: Seat; options: PrintOptions }) {
   const hasMember = !!seat.memberName
 
   let bgColor = '#F9FAFB'
