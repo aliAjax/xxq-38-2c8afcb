@@ -1,4 +1,4 @@
-import { useState, useMemo } from 'react'
+import { useState, useMemo, useEffect } from 'react'
 import { X, AlertTriangle, CheckCircle, Plus, ArrowRightLeft, Merge, MapPin, Users, AlertCircle, ChevronDown, ChevronRight } from 'lucide-react'
 import { useVenueStore } from '@/store/venueStore'
 import type { ImportPreviewResult, ImportStrategy, ZoneConflictInfo } from '@/types'
@@ -24,18 +24,15 @@ export function ImportPreviewModal({ open, jsonContent, fileName, onClose, onSuc
     return previewImportData(jsonContent, strategy)
   }, [jsonContent, strategy, previewImportData])
 
-  const [selectedZoneIds, setSelectedZoneIds] = useState<Set<string>>(() => {
-    const ids: string[] = []
-    const initialPreview = previewImportData(jsonContent, 'overwrite')
-    ;[...initialPreview.newZones, ...initialPreview.overwriteZones, ...initialPreview.mergeZones].forEach((z) => {
-      if (z.selected) ids.push(z.zone.id)
-    })
-    return new Set(ids)
-  })
-
   const allZones = useMemo(() => {
     return [...preview.newZones, ...preview.overwriteZones, ...preview.mergeZones]
   }, [preview])
+
+  const [selectedZoneIds, setSelectedZoneIds] = useState<Set<string>>(new Set())
+
+  useEffect(() => {
+    setSelectedZoneIds(new Set(allZones.filter((z) => z.selected).map((z) => z.zone.id)))
+  }, [allZones])
 
   const toggleZoneSelection = (zoneId: string) => {
     setSelectedZoneIds((prev) => {

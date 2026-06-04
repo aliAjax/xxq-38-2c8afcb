@@ -500,15 +500,16 @@ export const useVenueStore = create<VenueStore>()(
                   seatNumber: seat.seatNumber,
                   existingMember: existingSeat.memberName,
                   newMember: seat.memberName,
-                  willBeOverwritten: strategy === 'overwrite',
+                  willBeOverwritten: strategy === 'overwrite' || strategy === 'selective',
                 })
               }
             }
           }
 
+          const hasConflicts = conflictSeats.length > 0
           const zoneInfo: ZoneConflictInfo = {
             zone,
-            status: existingZone ? (strategy === 'overwrite' ? 'overwrite' : 'merge') : 'new',
+            status: existingZone ? (hasConflicts ? 'overwrite' : 'merge') : 'new',
             totalSeats: zoneSeats.length,
             assignedSeats: assignedCount,
             conflictSeats,
@@ -517,7 +518,7 @@ export const useVenueStore = create<VenueStore>()(
 
           if (!existingZone) {
             newZones.push(zoneInfo)
-          } else if (strategy === 'overwrite') {
+          } else if (hasConflicts) {
             overwriteZones.push(zoneInfo)
           } else {
             mergeZones.push(zoneInfo)
@@ -576,9 +577,11 @@ export const useVenueStore = create<VenueStore>()(
           const selectedZoneIdSet = new Set(selectedZoneIds)
 
           const currentZoneNameMap = new Map(currentState.zones.map((z) => [z.name.trim().toLowerCase(), z]))
-          const newZones: Zone[] = []
-          const updatedSeats: Record<string, Seat[]> = { ...currentState.seats }
-          const updatedZones = [...currentState.zones]
+          const updatedZones = currentState.zones.map((z) => ({ ...z }))
+          const updatedSeats = cloneSeats(currentState.seats)
+
+          const overwriteZoneIds = new Set(preview.overwriteZones.map((z) => z.zone.id))
+          const effectiveStrategy: 'overwrite' | 'mergeEmpty' = strategy === 'mergeEmpty' ? 'mergeEmpty' : 'overwrite'
 
           for (const zone of parsedZones) {
             if (!selectedZoneIdSet.has(zone.id)) continue
@@ -595,53 +598,54 @@ export const useVenueStore = create<VenueStore>()(
                 height: zone.height ?? Math.max(80, zone.rows * 25),
               }
               const newZone = { ...zone, ...layout }
-              newZones.push(newZone)
               updatedZones.push(newZone)
-              updatedSeats[zone.id] = zoneSeats
+              updatedSeats[zone.id] = zoneSeats.map((s) => ({ ...s }))
             } else {
-              const existingSeats = updatedSeats[existingZone.id] || []
-              const seatNumberMap = new Map(existingSeats.map((s) => [s.seatNumber, s]))
+              const targetSeats = updatedSeats[existingZone.id]
+              if (!targetSeats) continue
+
+              const seatNumberMap = new Map(targetSeats.map((s) => [s.seatNumber, s]))
+              const isConflictZone = overwriteZoneIds.has(zone.id)
 
               for (const newSeat of zoneSeats) {
                 const existingSeat = seatNumberMap.get(newSeat.seatNumber)
                 if (!existingSeat) continue
 
-                if (strategy === 'overwrite') {
-                  Object.assign(existingSeat, {
-                    memberName: newSeat.memberName,
-                    cheeringColor: newSeat.cheeringColor,
-                    ticketStatus: newSeat.ticketStatus,
-                    supplies: newSeat.supplies,
-                  })
-                } else if (strategy === 'mergeEmpty') {
+                if (isConflictZone || effectiveStrategy === 'overwrite') {
+                  existingSeat.memberName = newSeat.memberName
+                  existingSeat.cheeringColor = newSeat.cheeringColor
+                  existingSeat.ticketStatus = newSeat.ticketStatus
+                  existingSeat.supplies = newSeat.supplies
+                } else if (effectiveStrategy === 'mergeEmpty') {
                   if (!existingSeat.memberName) {
-                    Object.assign(existingSeat, {
-                      memberName: newSeat.memberName,
-                      cheeringColor: newSeat.cheeringColor,
-                      ticketStatus: newSeat.ticketStatus,
-                      supplies: newSeat.supplies,
-                    })
+                    existingSeat.memberName = newSeat.memberName
+                    existingSeat.cheeringColor = newSeat.cheeringColor
+                    existingSeat.ticketStatus = newSeat.ticketStatus
+                    existingSeat.supplies = newSeat.supplies
                   }
                 }
               }
             }
           }
 
-          if (recordHistory) {
-            set((s) => ({
-              past: [...s.past, {
-                type: 'importData',
-                before: backupSeats,
-                beforeZones: backupZones,
-                label: '导入数据'
-              }],
-              future: [],
-              canUndo: true,
-              canRedo: false,
-            }))
+          const updatePayload: Partial<VenueStore> = {
+            zones: updatedZones,
+            seats: updatedSeats,
           }
 
-          set({ zones: updatedZones, seats: updatedSeats })
+          if (recordHistory) {
+            updatePayload.past = [...currentState.past, {
+              type: 'importData' as const,
+              before: backupSeats,
+              beforeZones: backupZones,
+              label: '导入数据'
+            }]
+            updatePayload.future = []
+            updatePayload.canUndo = true
+            updatePayload.canRedo = false
+          }
+
+          set(updatePayload)
 
           const importedZones = selectedZoneIds.length
           const importedSeats = [...preview.newZones, ...preview.overwriteZones, ...preview.mergeZones]
