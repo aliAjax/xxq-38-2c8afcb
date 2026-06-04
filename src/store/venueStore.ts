@@ -495,12 +495,13 @@ export const useVenueStore = create<VenueStore>()(
               }
 
               if (existingSeat.memberName && seat.memberName && existingSeat.memberName !== seat.memberName) {
+                const effectiveStrategy: 'overwrite' | 'mergeEmpty' = strategy === 'mergeEmpty' ? 'mergeEmpty' : 'overwrite'
                 conflictSeats.push({
                   seatId: existingSeat.id,
                   seatNumber: seat.seatNumber,
                   existingMember: existingSeat.memberName,
                   newMember: seat.memberName,
-                  willBeOverwritten: strategy === 'overwrite' || strategy === 'selective',
+                  willBeOverwritten: effectiveStrategy === 'overwrite',
                 })
               }
             }
@@ -580,7 +581,6 @@ export const useVenueStore = create<VenueStore>()(
           const updatedZones = currentState.zones.map((z) => ({ ...z }))
           const updatedSeats = cloneSeats(currentState.seats)
 
-          const overwriteZoneIds = new Set(preview.overwriteZones.map((z) => z.zone.id))
           const effectiveStrategy: 'overwrite' | 'mergeEmpty' = strategy === 'mergeEmpty' ? 'mergeEmpty' : 'overwrite'
 
           for (const zone of parsedZones) {
@@ -605,13 +605,12 @@ export const useVenueStore = create<VenueStore>()(
               if (!targetSeats) continue
 
               const seatNumberMap = new Map(targetSeats.map((s) => [s.seatNumber, s]))
-              const isConflictZone = overwriteZoneIds.has(zone.id)
 
               for (const newSeat of zoneSeats) {
                 const existingSeat = seatNumberMap.get(newSeat.seatNumber)
                 if (!existingSeat) continue
 
-                if (isConflictZone || effectiveStrategy === 'overwrite') {
+                if (effectiveStrategy === 'overwrite') {
                   existingSeat.memberName = newSeat.memberName
                   existingSeat.cheeringColor = newSeat.cheeringColor
                   existingSeat.ticketStatus = newSeat.ticketStatus
