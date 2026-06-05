@@ -25,9 +25,7 @@ export default function SuppliesSummary() {
   const inputRef = useRef<HTMLTextAreaElement>(null)
 
   useEffect(() => {
-    if (editing) {
-      setEditing(null)
-    }
+    setEditing(null)
   }, [filterMode, searchText])
 
   const zoneData = useMemo(() => {
