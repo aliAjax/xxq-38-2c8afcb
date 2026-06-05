@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { Sparkles, Plus, Users, Package, LayoutGrid, Map, Printer } from 'lucide-react'
 import { useVenueStore } from '@/store/venueStore'
+import { useUIStore } from '@/store/uiStore'
 import { ZoneCard, GlobalStats } from '@/components/ZoneCard'
 import { CreateZoneModal, DataActions } from '@/components/Modals'
 import { MemberImportModal } from '@/components/MemberImportModal'
@@ -9,14 +10,13 @@ import { ExchangeTodoPanel } from '@/components/ExchangeTodoPanel'
 import { FloorPlanEditor } from '@/components/FloorPlanEditor'
 import { UndoRedoButtons } from '@/components/UndoRedoButtons'
 
-type ViewMode = 'list' | 'floorplan'
-
 export default function Overview() {
   const navigate = useNavigate()
   const zones = useVenueStore((s) => s.zones)
+  const viewMode = useUIStore((s) => s.viewMode)
+  const setViewMode = useUIStore((s) => s.setViewMode)
   const [modalOpen, setModalOpen] = useState(false)
   const [importModalOpen, setImportModalOpen] = useState(false)
-  const [viewMode, setViewMode] = useState<ViewMode>('list')
 
   return (
     <div className="min-h-screen bg-base bg-grid-pattern">

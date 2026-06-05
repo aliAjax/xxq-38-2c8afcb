@@ -1,7 +1,8 @@
-import { useMemo, useState } from 'react'
+import { useMemo } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { Ticket, Check, ChevronRight, ListTodo } from 'lucide-react'
 import { useVenueStore } from '@/store/venueStore'
+import { useUIStore } from '@/store/uiStore'
 import type { TicketStatus, Seat, Zone } from '@/types'
 
 const STATUS_CONFIG: Record<TicketStatus, { label: string; color: string }> = {
@@ -21,7 +22,8 @@ export function ExchangeTodoPanel() {
   const zones = useVenueStore((s) => s.zones)
   const allSeats = useVenueStore((s) => s.seats)
   const updateSeat = useVenueStore((s) => s.updateSeat)
-  const [expandedZones, setExpandedZones] = useState<Set<string>>(new Set())
+  const expandedTodoZones = useUIStore((s) => s.expandedTodoZones)
+  const toggleExpandedTodoZone = useUIStore((s) => s.toggleExpandedTodoZone)
 
   const todoSeats = useMemo(() => {
     const result: SeatWithZone[] = []
@@ -63,16 +65,6 @@ export function ExchangeTodoPanel() {
   const pendingCount = todoSeats.filter((s) => s.ticketStatus === 'pending').length
   const confirmedCount = todoSeats.filter((s) => s.ticketStatus === 'confirmed').length
   const totalCount = todoSeats.length
-
-  const toggleZone = (zoneId: string) => {
-    const next = new Set(expandedZones)
-    if (next.has(zoneId)) {
-      next.delete(zoneId)
-    } else {
-      next.add(zoneId)
-    }
-    setExpandedZones(next)
-  }
 
   const handleMarkExchanged = (e: React.MouseEvent, zoneId: string, seatId: string) => {
     e.stopPropagation()
@@ -127,11 +119,11 @@ export function ExchangeTodoPanel() {
           const [zoneId, data] = entry
           const { zone, pending, confirmed } = data
           const zoneTotal = pending.length + confirmed.length
-          const isExpanded = expandedZones.has(zoneId)
+          const isExpanded = expandedTodoZones.includes(zoneId)
           return (
             <div key={zoneId} className="bg-surface-light/30 rounded-lg overflow-hidden">
               <button
-                onClick={() => toggleZone(zoneId)}
+                onClick={() => toggleExpandedTodoZone(zoneId)}
                 className="w-full flex items-center gap-2 px-3 py-2 hover:bg-surface-light/50 transition-colors">
                 <span
                   className="w-2.5 h-2.5 rounded-full shrink-0"

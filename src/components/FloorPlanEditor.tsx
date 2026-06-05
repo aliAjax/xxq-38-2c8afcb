@@ -2,6 +2,7 @@ import { useState, useRef, useEffect, useCallback } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { Edit, Eye, RotateCcw, Move, Maximize2, Palette, Users, Trash2 } from 'lucide-react'
 import { useVenueStore } from '@/store/venueStore'
+import { useUIStore } from '@/store/uiStore'
 import type { Zone } from '@/types'
 
 const PRESET_COLORS = [
@@ -30,9 +31,14 @@ export function FloorPlanEditor() {
   const resetZoneLayouts = useVenueStore((s) => s.resetZoneLayouts)
   const ensureZoneLayouts = useVenueStore((s) => s.ensureZoneLayouts)
 
-  const [isEditMode, setIsEditMode] = useState(false)
-  const [selectedZoneId, setSelectedZoneId] = useState<string | null>(null)
-  const [showColorPicker, setShowColorPicker] = useState(false)
+  const isEditMode = useUIStore((s) => s.floorPlanEditMode)
+  const selectedZoneId = useUIStore((s) => s.selectedZoneId)
+  const showColorPicker = useUIStore((s) => s.showColorPicker)
+  const setIsEditMode = useUIStore((s) => s.setFloorPlanEditMode)
+  const setSelectedZoneId = useUIStore((s) => s.setSelectedZoneId)
+  const setShowColorPicker = useUIStore((s) => s.setShowColorPicker)
+  const resetFloorPlanState = useUIStore((s) => s.resetFloorPlanState)
+
   const [dragState, setDragState] = useState<DragState>({
     type: null,
     zoneId: null,
@@ -172,9 +178,11 @@ export function FloorPlanEditor() {
         <div className="flex items-center gap-2">
           <button
             onClick={() => {
-              setIsEditMode(!isEditMode)
-              setSelectedZoneId(null)
-              setShowColorPicker(false)
+              if (isEditMode) {
+                resetFloorPlanState()
+              } else {
+                setIsEditMode(true)
+              }
             }}
             className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-all ${
               isEditMode
