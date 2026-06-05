@@ -1,18 +1,34 @@
-import { useState, useMemo } from 'react'
+import { useState, useMemo, useRef, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { ArrowLeft, Package, Filter, ChevronDown, ChevronUp, User, MapPin } from 'lucide-react'
+import { ArrowLeft, Package, Filter, ChevronDown, ChevronUp, User, MapPin, Edit2, Check, X } from 'lucide-react'
 import { useVenueStore } from '@/store/venueStore'
+import type { Seat } from '@/types'
 
 type FilterMode = 'all' | 'withSupplies' | 'unassigned'
+
+interface EditingState {
+  zoneId: string
+  seatId: string
+  value: string
+}
 
 export default function SuppliesSummary() {
   const navigate = useNavigate()
   const zones = useVenueStore((s) => s.zones)
   const allSeats = useVenueStore((s) => s.seats)
+  const updateSeat = useVenueStore((s) => s.updateSeat)
 
   const [filterMode, setFilterMode] = useState<FilterMode>('all')
   const [expandedZones, setExpandedZones] = useState<Set<string>>(new Set(zones.map((z) => z.id)))
   const [searchText, setSearchText] = useState('')
+  const [editing, setEditing] = useState<EditingState | null>(null)
+  const inputRef = useRef<HTMLTextAreaElement>(null)
+
+  useEffect(() => {
+    if (editing) {
+      setEditing(null)
+    }
+  }, [filterMode, searchText])
 
   const zoneData = useMemo(() => {
     return zones.map((zone) => {
@@ -79,6 +95,46 @@ export default function SuppliesSummary() {
 
   const collapseAll = () => {
     setExpandedZones(new Set())
+  }
+
+  const handleStartEdit = (seat: Seat) => {
+    if (!seat.memberName) return
+    setEditing({
+      zoneId: seat.zoneId,
+      seatId: seat.id,
+      value: seat.supplies,
+    })
+  }
+
+  const handleSaveEdit = () => {
+    if (!editing) return
+    updateSeat(editing.zoneId, editing.seatId, { supplies: editing.value })
+    setEditing(null)
+  }
+
+  const handleCancelEdit = () => {
+    setEditing(null)
+  }
+
+  const handleKeyDown = (e: React.KeyboardEvent) => {
+    if (e.key === 'Enter' && !e.shiftKey) {
+      e.preventDefault()
+      handleSaveEdit()
+    }
+    if (e.key === 'Escape') {
+      handleCancelEdit()
+    }
+  }
+
+  useEffect(() => {
+    if (editing && inputRef.current) {
+      inputRef.current.focus()
+      inputRef.current.select()
+    }
+  }, [editing])
+
+  const isEditing = (seat: Seat) => {
+    return editing?.zoneId === seat.zoneId && editing?.seatId === seat.id
   }
 
   return (
@@ -205,7 +261,9 @@ export default function SuppliesSummary() {
                         {zd.seats.map((seat) => (
                           <div
                             key={seat.id}
-                            className="px-4 py-2.5 flex items-center gap-4 hover:bg-white/[0.01] transition-colors"
+                            className={`px-4 py-2.5 flex items-center gap-4 hover:bg-white/[0.01] transition-colors ${
+                              isEditing(seat) ? 'bg-white/[0.02]' : ''
+                            }`}
                           >
                             <div className="w-14 shrink-0">
                               <div className="flex items-center gap-1 text-xs text-white/30">
@@ -224,18 +282,60 @@ export default function SuppliesSummary() {
                               )}
                             </div>
                             <div className="flex-1 min-w-0">
-                              {seat.supplies ? (
-                                <div className="flex items-center gap-1.5">
-                                  <Package size={10} className="text-neon-pink/50 shrink-0" />
-                                  <span className="text-sm text-white/60 truncate">{seat.supplies}</span>
+                              {isEditing(seat) ? (
+                                <div className="flex items-start gap-2">
+                                  <textarea
+                                    ref={inputRef}
+                                    value={editing!.value}
+                                    onChange={(e) => setEditing({ ...editing!, value: e.target.value })}
+                                    onKeyDown={handleKeyDown}
+                                    placeholder="输入物资..."
+                                    rows={1}
+                                    className="flex-1 bg-surface-light border border-neon-pink/30 rounded-lg px-2 py-1 text-sm text-white placeholder-white/20 focus:outline-none focus:border-neon-pink/50 resize-none transition-colors"
+                                    style={{ minHeight: '32px' }}
+                                  />
+                                  <div className="flex items-center gap-1 shrink-0">
+                                    <button
+                                      onClick={handleSaveEdit}
+                                      className="p-1 rounded hover:bg-neon-green/20 text-neon-green transition-colors"
+                                      title="保存"
+                                    >
+                                      <Check size={14} />
+                                    </button>
+                                    <button
+                                      onClick={handleCancelEdit}
+                                      className="p-1 rounded hover:bg-white/10 text-white/40 hover:text-white/60 transition-colors"
+                                      title="取消"
+                                    >
+                                      <X size={14} />
+                                    </button>
+                                  </div>
                                 </div>
                               ) : seat.memberName ? (
-                                <span className="text-xs text-white/15 italic">未填写物资</span>
+                                <div
+                                  className="group flex items-center gap-1.5 cursor-pointer"
+                                  onClick={() => handleStartEdit(seat)}
+                                >
+                                  <Package size={10} className="text-neon-pink/50 shrink-0" />
+                                  {seat.supplies ? (
+                                    <span className="text-sm text-white/60 truncate group-hover:text-white/80 transition-colors">
+                                      {seat.supplies}
+                                    </span>
+                                  ) : (
+                                    <span className="text-xs text-white/15 italic group-hover:text-white/30 transition-colors">
+                                      点击填写物资
+                                    </span>
+                                  )}
+                                  <Edit2
+                                    size={10}
+                                    className="opacity-0 group-hover:opacity-100 text-white/20 shrink-0 ml-1 transition-opacity"
+                                  />
+                                </div>
                               ) : (
                                 <span className="text-xs text-white/8 italic">—</span>
                               )}
                             </div>
-                            {seat.cheeringColor && (
+                            {seat.cheeringColor && !isEditing(seat) && (
                               <div
                                 className="w-3 h-3 rounded-full shrink-0"
                                 style={{ backgroundColor: seat.cheeringColor }}
