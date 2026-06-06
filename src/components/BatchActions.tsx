@@ -65,7 +65,7 @@ export function BatchActions({ zoneId, selectedSeatIds, onClearSelection }: Batc
 
       <div className="relative">
         <button
-          onClick={() => { setColorPickerOpen(!colorPickerOpen); setTicketPickerOpen(false) }}
+          onClick={() => { setColorPickerOpen(!colorPickerOpen); setTicketPickerOpen(false); setObstructionPickerOpen(false) }}
           className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg bg-surface-light border border-white/[0.06] text-white/50 hover:text-white text-xs transition-all"
         >
           <Paintbrush size={12} /> 上色
