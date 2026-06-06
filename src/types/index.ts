@@ -54,12 +54,21 @@ export interface VenueData {
 
 export type ImportStrategy = 'overwrite' | 'mergeEmpty' | 'selective'
 
+export type SeatConflictChoice = 'keep' | 'overwrite' | 'skip'
+
 export interface SeatConflictInfo {
   seatId: string
   seatNumber: string
   existingMember: string
   newMember: string
   willBeOverwritten: boolean
+  choice: SeatConflictChoice
+  existingTicketStatus?: string
+  newTicketStatus?: string
+  existingCheeringColor?: string
+  newCheeringColor?: string
+  existingSupplies?: string
+  newSupplies?: string
 }
 
 export interface ZoneConflictInfo {

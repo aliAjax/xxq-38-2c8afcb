@@ -1,7 +1,7 @@
 import { useState, useMemo, useEffect } from 'react'
 import { X, AlertTriangle, CheckCircle, Plus, ArrowRightLeft, Merge, MapPin, Users, AlertCircle, ChevronDown, ChevronRight } from 'lucide-react'
 import { useVenueStore } from '@/store/venueStore'
-import type { ImportPreviewResult, ImportStrategy, ZoneConflictInfo } from '@/types'
+import type { ImportPreviewResult, ImportStrategy, ZoneConflictInfo, SeatConflictChoice } from '@/types'
 
 interface ImportPreviewModalProps {
   open: boolean
@@ -19,10 +19,21 @@ export function ImportPreviewModal({ open, jsonContent, fileName, onClose, onSuc
   const [expandedZones, setExpandedZones] = useState<Set<string>>(new Set())
   const [importing, setImporting] = useState(false)
   const [result, setResult] = useState<{ success: boolean; message: string } | null>(null)
+  const [seatConflictChoices, setSeatConflictChoices] = useState<Record<string, SeatConflictChoice>>({})
 
   const preview = useMemo<ImportPreviewResult>(() => {
     return previewImportData(jsonContent, strategy)
   }, [jsonContent, strategy, previewImportData])
+
+  useEffect(() => {
+    const choices: Record<string, SeatConflictChoice> = {}
+    for (const zone of [...preview.overwriteZones, ...preview.mergeZones]) {
+      for (const conflict of zone.conflictSeats) {
+        choices[conflict.seatId] = conflict.choice
+      }
+    }
+    setSeatConflictChoices(choices)
+  }, [preview])
 
   const allZones = useMemo(() => {
     return [...preview.newZones, ...preview.overwriteZones, ...preview.mergeZones]
@@ -33,6 +44,51 @@ export function ImportPreviewModal({ open, jsonContent, fileName, onClose, onSuc
   useEffect(() => {
     setSelectedZoneIds(new Set(allZones.filter((z) => z.selected).map((z) => z.zone.id)))
   }, [allZones])
+
+  const allConflictSeats = useMemo(() => {
+    const seats: { zoneId: string; seatId: string }[] = []
+    for (const zone of [...preview.overwriteZones, ...preview.mergeZones]) {
+      for (const conflict of zone.conflictSeats) {
+        seats.push({ zoneId: zone.zone.id, seatId: conflict.seatId })
+      }
+    }
+    return seats
+  }, [preview])
+
+  const conflictStats = useMemo(() => {
+    let keep = 0
+    let overwrite = 0
+    let skip = 0
+    for (const seatId in seatConflictChoices) {
+      const choice = seatConflictChoices[seatId]
+      if (choice === 'keep') keep++
+      else if (choice === 'overwrite') overwrite++
+      else if (choice === 'skip') skip++
+    }
+    return { keep, overwrite, skip, total: keep + overwrite + skip }
+  }, [seatConflictChoices])
+
+  const handleSeatChoiceChange = (seatId: string, choice: SeatConflictChoice) => {
+    setSeatConflictChoices((prev) => ({
+      ...prev,
+      [seatId]: choice,
+    }))
+  }
+
+  const handleBulkChoice = (zoneId: string | 'all', choice: SeatConflictChoice) => {
+    setSeatConflictChoices((prev) => {
+      const next = { ...prev }
+      const zones = zoneId === 'all'
+        ? [...preview.overwriteZones, ...preview.mergeZones]
+        : [...preview.overwriteZones, ...preview.mergeZones].filter((z) => z.zone.id === zoneId)
+      for (const zone of zones) {
+        for (const conflict of zone.conflictSeats) {
+        next[conflict.seatId] = choice
+        }
+      }
+      return next
+    })
+  }
 
   const toggleZoneSelection = (zoneId: string) => {
     setSelectedZoneIds((prev) => {
@@ -73,7 +129,7 @@ export function ImportPreviewModal({ open, jsonContent, fileName, onClose, onSuc
       const selectedIds = strategy === 'selective'
         ? Array.from(selectedZoneIds)
         : allZones.map((z) => z.zone.id)
-      const res = executeConfirmedImport(preview, strategy, selectedIds)
+      const res = executeConfirmedImport(preview, strategy, selectedIds, seatConflictChoices)
       setResult(res)
       if (res.success) {
         setTimeout(() => {
@@ -111,6 +167,11 @@ export function ImportPreviewModal({ open, jsonContent, fileName, onClose, onSuc
     const config = typeConfig[type]
     const Icon = config.icon
 
+    const zoneConflictCount = zoneInfo.conflictSeats.length
+    const zoneOverwriteCount = zoneInfo.conflictSeats.filter((c) => seatConflictChoices[c.seatId] === 'overwrite').length
+    const zoneKeepCount = zoneInfo.conflictSeats.filter((c) => seatConflictChoices[c.seatId] === 'keep').length
+    const zoneSkipCount = zoneInfo.conflictSeats.filter((c) => seatConflictChoices[c.seatId] === 'skip').length
+
     return (
       <div key={zoneInfo.zone.id} className={`rounded-lg border ${config.borderColor} ${config.bgColor} overflow-hidden`}>
         <div className="px-3 py-2 flex items-center gap-2">
@@ -138,28 +199,89 @@ export function ImportPreviewModal({ open, jsonContent, fileName, onClose, onSuc
           </span>
           {zoneInfo.conflictSeats.length > 0 && (
             <span className="text-xs px-1.5 py-0.5 rounded bg-red-500/20 text-red-400">
-              {zoneInfo.conflictSeats.length} 个冲突
+              {zoneConflictCount} 个冲突
             </span>
           )}
         </div>
 
         {isExpanded && zoneInfo.conflictSeats.length > 0 && (
           <div className="border-t border-white/5 px-3 py-2">
-            <div className="text-xs text-white/40 mb-2">冲突座位详情：</div>
-            <div className="overflow-auto max-h-32 space-y-1">
-              {zoneInfo.conflictSeats.map((conflict) => (
-                <div key={conflict.seatId} className="flex items-center gap-2 text-xs bg-surface-light/50 rounded px-2 py-1">
-                  <span className="font-mono text-white/60 w-16">{conflict.seatNumber}</span>
-                  <span className="text-white/80">{conflict.existingMember}</span>
-                  <ArrowRightLeft size={12} className="text-neon-pink" />
-                  <span className="text-neon-pink">{conflict.newMember}</span>
-                  {conflict.willBeOverwritten ? (
-                    <span className="ml-auto text-xs px-1.5 py-0.5 rounded bg-neon-pink/20 text-neon-pink">将被覆盖</span>
-                  ) : (
-                    <span className="ml-auto text-xs px-1.5 py-0.5 rounded bg-white/10 text-white/40">保留原有</span>
-                  )}
-                </div>
-              ))}
+            <div className="flex items-center justify-between mb-2">
+              <div className="text-xs text-white/40">冲突座位详情：</div>
+              <div className="flex items-center gap-1">
+                <span className="text-[10px] text-white/30">批量：</span>
+                <button
+                  onClick={() => handleBulkChoice(zoneInfo.zone.id, 'keep')}
+                  className="px-2 py-0.5 text-[10px] rounded bg-white/10 text-white/50 hover:bg-white/20 hover:text-white transition-colors"
+                >
+                  全部保留
+                </button>
+                <button
+                  onClick={() => handleBulkChoice(zoneInfo.zone.id, 'overwrite')}
+                  className="px-2 py-0.5 text-[10px] rounded bg-neon-pink/20 text-neon-pink/70 hover:bg-neon-pink/30 hover:text-neon-pink transition-colors"
+                >
+                  全部覆盖
+                </button>
+                <button
+                  onClick={() => handleBulkChoice(zoneInfo.zone.id, 'skip')}
+                  className="px-2 py-0.5 text-[10px] rounded bg-yellow-500/20 text-yellow-400/70 hover:bg-yellow-500/30 hover:text-yellow-400 transition-colors"
+                >
+                  全部跳过
+                </button>
+              </div>
+            </div>
+            <div className="flex items-center gap-3 mb-2 text-[10px]">
+              <span className="text-white/30">本区域：</span>
+              <span className="text-neon-green">{zoneKeepCount} 保留</span>
+              <span className="text-neon-pink">{zoneOverwriteCount} 覆盖</span>
+              <span className="text-yellow-400">{zoneSkipCount} 跳过</span>
+            </div>
+            <div className="overflow-auto max-h-48 space-y-1">
+              {zoneInfo.conflictSeats.map((conflict) => {
+                const choice = seatConflictChoices[conflict.seatId] || 'keep'
+                return (
+                  <div key={conflict.seatId} className="bg-surface-light/50 rounded px-2 py-1.5">
+                    <div className="flex items-center gap-2 text-xs mb-1">
+                      <span className="font-mono text-white/60 w-14">{conflict.seatNumber}</span>
+                      <span className="text-white/80 flex-1 truncate">{conflict.existingMember}</span>
+                      <ArrowRightLeft size={12} className="text-neon-pink flex-shrink-0" />
+                      <span className="text-neon-pink flex-1 truncate">{conflict.newMember}</span>
+                    </div>
+                    <div className="flex items-center gap-1 ml-14">
+                      <button
+                        onClick={() => handleSeatChoiceChange(conflict.seatId, 'keep')}
+                        className={`flex-1 px-2 py-1 text-[10px] rounded transition-all ${
+                          choice === 'keep'
+                            ? 'bg-neon-green/20 text-neon-green border border-neon-green/40'
+                            : 'bg-white/5 text-white/40 border border-transparent hover:bg-white/10'
+                        }`}
+                      >
+                        保留原数据
+                      </button>
+                      <button
+                        onClick={() => handleSeatChoiceChange(conflict.seatId, 'overwrite')}
+                        className={`flex-1 px-2 py-1 text-[10px] rounded transition-all ${
+                          choice === 'overwrite'
+                            ? 'bg-neon-pink/20 text-neon-pink border border-neon-pink/40'
+                            : 'bg-white/5 text-white/40 border border-transparent hover:bg-white/10'
+                        }`}
+                      >
+                        覆盖为导入
+                      </button>
+                      <button
+                        onClick={() => handleSeatChoiceChange(conflict.seatId, 'skip')}
+                        className={`flex-1 px-2 py-1 text-[10px] rounded transition-all ${
+                          choice === 'skip'
+                            ? 'bg-yellow-500/20 text-yellow-400 border border-yellow-500/40'
+                            : 'bg-white/5 text-white/40 border border-transparent hover:bg-white/10'
+                        }`}
+                      >
+                        跳过
+                      </button>
+                    </div>
+                  </div>
+                )
+              })}
             </div>
           </div>
         )}
@@ -262,6 +384,51 @@ export function ImportPreviewModal({ open, jsonContent, fileName, onClose, onSuc
                 <StatCard label="无效座位" value={preview.totalInvalid} color={preview.totalInvalid > 0 ? 'text-yellow-400' : 'text-white/40'} />
               </div>
 
+              {hasConflicts && (
+                <div className="p-3 rounded-lg bg-surface-light border border-white/10">
+                  <div className="flex items-center justify-between mb-2">
+                    <div className="flex items-center gap-2 text-white/60 text-sm">
+                      <AlertTriangle size={16} className="text-neon-pink" /> 冲突座位处理
+                    </div>
+                    <div className="flex items-center gap-1">
+                      <span className="text-xs text-white/30">全部：</span>
+                      <button
+                        onClick={() => handleBulkChoice('all', 'keep')}
+                        className="px-2 py-0.5 text-xs rounded bg-neon-green/10 text-neon-green/70 hover:bg-neon-green/20 transition-colors"
+                      >
+                        全部保留
+                      </button>
+                      <button
+                        onClick={() => handleBulkChoice('all', 'overwrite')}
+                        className="px-2 py-0.5 text-xs rounded bg-neon-pink/10 text-neon-pink/70 hover:bg-neon-pink/20 transition-colors"
+                      >
+                        全部覆盖
+                      </button>
+                      <button
+                        onClick={() => handleBulkChoice('all', 'skip')}
+                        className="px-2 py-0.5 text-xs rounded bg-yellow-500/10 text-yellow-400/70 hover:bg-yellow-500/20 transition-colors"
+                      >
+                        全部跳过
+                      </button>
+                    </div>
+                  </div>
+                  <div className="grid grid-cols-3 gap-2">
+                    <div className="bg-neon-green/10 rounded-lg p-2 text-center">
+                      <div className="font-mono font-bold text-lg text-neon-green">{conflictStats.keep}</div>
+                      <div className="text-xs text-neon-green/60">保留原数据</div>
+                    </div>
+                    <div className="bg-neon-pink/10 rounded-lg p-2 text-center">
+                      <div className="font-mono font-bold text-lg text-neon-pink">{conflictStats.overwrite}</div>
+                      <div className="text-xs text-neon-pink/60">覆盖为导入</div>
+                    </div>
+                    <div className="bg-yellow-500/10 rounded-lg p-2 text-center">
+                      <div className="font-mono font-bold text-lg text-yellow-400">{conflictStats.skip}</div>
+                      <div className="text-xs text-yellow-400/60">跳过</div>
+                    </div>
+                  </div>
+                </div>
+              )}
+
               {preview.duplicateMembers.length > 0 && (
                 <div className="p-3 rounded-lg bg-yellow-500/10 border border-yellow-500/30">
                   <div className="flex items-center gap-2 text-yellow-400 text-sm mb-2">
@@ -355,7 +522,13 @@ export function ImportPreviewModal({ open, jsonContent, fileName, onClose, onSuc
             className="flex-1 px-4 py-2.5 rounded-lg bg-neon-purple text-white font-medium hover:bg-neon-purple/80 disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
             style={{ boxShadow: canImport && !importing && !result?.success ? '0 0 20px rgba(191,90,242,0.3)' : 'none' }}
           >
-            {importing ? '导入中...' : result?.success ? '导入成功' : `确认导入 (${selectedZoneIds.size} 个区域)`}
+            {importing
+              ? '导入中...'
+              : result?.success
+              ? '导入成功'
+              : hasConflicts
+              ? `确认导入 (覆盖 ${conflictStats.overwrite} / 保留 ${conflictStats.keep} / 跳过 ${conflictStats.skip})`
+              : `确认导入 (${selectedZoneIds.size} 个区域)`}
           </button>
         </div>
       </div>

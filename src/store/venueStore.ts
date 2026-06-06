@@ -1,6 +1,6 @@
 import { create } from 'zustand'
 import { persist } from 'zustand/middleware'
-import type { Zone, Seat, VenueData, TicketStatus, ImportPreviewResult, ImportStrategy, ZoneConflictInfo, SeatConflictInfo, InvalidSeatInfo, ActivityLogType, ActivityLogEntry } from '@/types'
+import type { Zone, Seat, VenueData, TicketStatus, ImportPreviewResult, ImportStrategy, ZoneConflictInfo, SeatConflictInfo, SeatConflictChoice, InvalidSeatInfo, ActivityLogType, ActivityLogEntry } from '@/types'
 
 export type { MemberImportItem }
 
@@ -117,7 +117,7 @@ interface VenueStore extends VenueData {
   exportData: () => string
   importData: (json: string, recordHistory?: boolean) => boolean
   previewImportData: (json: string, strategy: ImportStrategy) => ImportPreviewResult
-  executeConfirmedImport: (preview: ImportPreviewResult, strategy: ImportStrategy, selectedZoneIds: string[], recordHistory?: boolean) => { success: boolean; message: string }
+  executeConfirmedImport: (preview: ImportPreviewResult, strategy: ImportStrategy, selectedZoneIds: string[], seatConflictChoices?: Record<string, SeatConflictChoice>, recordHistory?: boolean) => { success: boolean; message: string }
   clearAll: (recordHistory?: boolean) => void
   getZoneSeats: (zoneId: string) => Seat[]
   getZoneStats: (zoneId: string) => { total: number; assigned: number; obstructed: number; ticketStats: Record<TicketStatus, number> }
@@ -846,6 +846,13 @@ export const useVenueStore = create<VenueStore>()(
                   existingMember: existingSeat.memberName,
                   newMember: seat.memberName,
                   willBeOverwritten: effectiveStrategy === 'overwrite',
+                  choice: effectiveStrategy === 'overwrite' ? 'overwrite' : 'keep',
+                  existingTicketStatus: existingSeat.ticketStatus,
+                  newTicketStatus: seat.ticketStatus,
+                  existingCheeringColor: existingSeat.cheeringColor,
+                  newCheeringColor: seat.cheeringColor,
+                  existingSupplies: existingSeat.supplies,
+                  newSupplies: seat.supplies,
                 })
               }
             }
@@ -904,7 +911,7 @@ export const useVenueStore = create<VenueStore>()(
         }
       },
 
-      executeConfirmedImport: (preview, strategy, selectedZoneIds, recordHistory = true) => {
+      executeConfirmedImport: (preview, strategy, selectedZoneIds, seatConflictChoices, recordHistory = true) => {
         if (!preview.parsedData) {
           return { success: false, message: '没有有效的解析数据' }
         }
@@ -961,13 +968,25 @@ export const useVenueStore = create<VenueStore>()(
                 const activityLogs: ActivityLogEntry[] = []
                 let shouldUpdate = false
 
-                if (effectiveStrategy === 'overwrite') {
+                const hasConflict = existingSeat.memberName && newSeat.memberName && existingSeat.memberName !== newSeat.memberName
+                const conflictChoice = seatConflictChoices?.[existingSeat.id]
+
+                let seatAction: 'overwrite' | 'keep' | 'mergeEmpty'
+                if (hasConflict && conflictChoice) {
+                  seatAction = conflictChoice === 'overwrite' ? 'overwrite' : 'keep'
+                } else if (hasConflict) {
+                  seatAction = effectiveStrategy === 'overwrite' ? 'overwrite' : 'keep'
+                } else {
+                  seatAction = effectiveStrategy === 'overwrite' ? 'overwrite' : 'mergeEmpty'
+                }
+
+                if (seatAction === 'overwrite') {
                   if (existingSeat.memberName !== newSeat.memberName && newSeat.memberName) {
                     activityLogs.push(createActivityLogEntry('assignMember', author, {
                       oldValue: existingSeat.memberName || undefined,
                       newValue: newSeat.memberName,
                       fieldName: 'memberName',
-                      note: '通过导入覆盖',
+                      note: hasConflict ? '通过导入覆盖（冲突处理）' : '通过导入覆盖',
                     }))
                   }
                   if (existingSeat.ticketStatus !== newSeat.ticketStatus) {
@@ -975,7 +994,7 @@ export const useVenueStore = create<VenueStore>()(
                       oldValue: existingSeat.ticketStatus,
                       newValue: newSeat.ticketStatus,
                       fieldName: 'ticketStatus',
-                      note: '通过导入覆盖',
+                      note: hasConflict ? '通过导入覆盖（冲突处理）' : '通过导入覆盖',
                     }))
                   }
                   if (existingSeat.cheeringColor !== newSeat.cheeringColor) {
@@ -983,7 +1002,7 @@ export const useVenueStore = create<VenueStore>()(
                       oldValue: existingSeat.cheeringColor || undefined,
                       newValue: newSeat.cheeringColor || undefined,
                       fieldName: 'cheeringColor',
-                      note: '通过导入覆盖',
+                      note: hasConflict ? '通过导入覆盖（冲突处理）' : '通过导入覆盖',
                     }))
                   }
                   if (existingSeat.supplies !== newSeat.supplies) {
@@ -991,7 +1010,7 @@ export const useVenueStore = create<VenueStore>()(
                       oldValue: existingSeat.supplies || undefined,
                       newValue: newSeat.supplies || undefined,
                       fieldName: 'supplies',
-                      note: '通过导入覆盖',
+                      note: hasConflict ? '通过导入覆盖（冲突处理）' : '通过导入覆盖',
                     }))
                   }
                   existingSeat.memberName = newSeat.memberName
@@ -999,7 +1018,7 @@ export const useVenueStore = create<VenueStore>()(
                   existingSeat.ticketStatus = newSeat.ticketStatus
                   existingSeat.supplies = newSeat.supplies
                   shouldUpdate = true
-                } else if (effectiveStrategy === 'mergeEmpty') {
+                } else if (seatAction === 'mergeEmpty') {
                   if (!existingSeat.memberName && newSeat.memberName) {
                     activityLogs.push(createActivityLogEntry('assignMember', author, {
                       oldValue: undefined,
