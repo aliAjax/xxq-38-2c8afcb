@@ -1,6 +1,6 @@
 import { useState, useMemo, useRef, useEffect } from 'react'
-import { useNavigate } from 'react-router-dom'
-import { ArrowLeft, Package, Filter, ChevronDown, ChevronUp, User, MapPin, Edit2, Check, X } from 'lucide-react'
+import { useNavigate, useLocation } from 'react-router-dom'
+import { ArrowLeft, Package, Filter, ChevronDown, ChevronUp, User, MapPin, Edit2, Check, X, ExternalLink } from 'lucide-react'
 import { useVenueStore } from '@/store/venueStore'
 import type { Seat } from '@/types'
 
@@ -14,13 +14,18 @@ interface EditingState {
 
 export default function SuppliesSummary() {
   const navigate = useNavigate()
+  const location = useLocation()
   const zones = useVenueStore((s) => s.zones)
   const allSeats = useVenueStore((s) => s.seats)
   const updateSeat = useVenueStore((s) => s.updateSeat)
 
-  const [filterMode, setFilterMode] = useState<FilterMode>('all')
-  const [expandedZones, setExpandedZones] = useState<Set<string>>(new Set(zones.map((z) => z.id)))
-  const [searchText, setSearchText] = useState('')
+  const locationState = location.state as { filterMode?: FilterMode; searchText?: string; expandedZones?: string[] } | null
+
+  const [filterMode, setFilterMode] = useState<FilterMode>(locationState?.filterMode || 'all')
+  const [expandedZones, setExpandedZones] = useState<Set<string>>(
+    locationState?.expandedZones ? new Set(locationState.expandedZones) : new Set(zones.map((z) => z.id))
+  )
+  const [searchText, setSearchText] = useState(locationState?.searchText || '')
   const [editing, setEditing] = useState<EditingState | null>(null)
   const inputRef = useRef<HTMLTextAreaElement>(null)
 
@@ -112,6 +117,18 @@ export default function SuppliesSummary() {
 
   const handleCancelEdit = () => {
     setEditing(null)
+  }
+
+  const handleJumpToSeat = (seat: Seat) => {
+    if (!seat.memberName) return
+    navigate(`/zone/${seat.zoneId}?seatId=${seat.id}`, {
+      state: {
+        from: 'supplies',
+        filterMode,
+        searchText,
+        expandedZones: Array.from(expandedZones),
+      },
+    })
   }
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
@@ -259,9 +276,10 @@ export default function SuppliesSummary() {
                         {zd.seats.map((seat) => (
                           <div
                             key={seat.id}
-                            className={`px-4 py-2.5 flex items-center gap-4 hover:bg-white/[0.01] transition-colors ${
-                              isEditing(seat) ? 'bg-white/[0.02]' : ''
+                            className={`px-4 py-2.5 flex items-center gap-4 transition-colors group ${
+                              isEditing(seat) ? 'bg-white/[0.02]' : seat.memberName ? 'hover:bg-white/[0.03] cursor-pointer' : 'hover:bg-white/[0.01]'
                             }`}
+                            onClick={() => !isEditing(seat) && handleJumpToSeat(seat)}
                           >
                             <div className="w-14 shrink-0">
                               <div className="flex items-center gap-1 text-xs text-white/30">
@@ -271,17 +289,28 @@ export default function SuppliesSummary() {
                             </div>
                             <div className="w-24 shrink-0 truncate">
                               {seat.memberName ? (
-                                <div className="flex items-center gap-1.5 text-sm text-white/80">
-                                  <User size={10} className="text-white/20 shrink-0" />
+                                <div className="flex items-center gap-1.5 text-sm text-white/80 group-hover:text-neon-cyan transition-colors">
+                                  <User size={10} className="text-white/20 shrink-0 group-hover:text-neon-cyan/50 transition-colors" />
                                   <span className="truncate">{seat.memberName}</span>
                                 </div>
                               ) : (
                                 <span className="text-xs text-white/15 italic">未分配</span>
                               )}
                             </div>
-                            <div className="flex-1 min-w-0">
+                            <div
+                              className="flex-1 min-w-0"
+                              onClick={(e) => {
+                                if (seat.memberName) {
+                                  e.stopPropagation()
+                                  handleStartEdit(seat)
+                                }
+                              }}
+                            >
                               {isEditing(seat) ? (
-                                <div className="flex items-start gap-2">
+                                <div
+                                  className="flex items-start gap-2"
+                                  onClick={(e) => e.stopPropagation()}
+                                >
                                   <textarea
                                     ref={inputRef}
                                     value={editing!.value}
@@ -294,14 +323,14 @@ export default function SuppliesSummary() {
                                   />
                                   <div className="flex items-center gap-1 shrink-0">
                                     <button
-                                      onClick={handleSaveEdit}
+                                      onClick={(e) => { e.stopPropagation(); handleSaveEdit() }}
                                       className="p-1 rounded hover:bg-neon-green/20 text-neon-green transition-colors"
                                       title="保存"
                                     >
                                       <Check size={14} />
                                     </button>
                                     <button
-                                      onClick={handleCancelEdit}
+                                      onClick={(e) => { e.stopPropagation(); handleCancelEdit() }}
                                       className="p-1 rounded hover:bg-white/10 text-white/40 hover:text-white/60 transition-colors"
                                       title="取消"
                                     >
@@ -310,10 +339,7 @@ export default function SuppliesSummary() {
                                   </div>
                                 </div>
                               ) : seat.memberName ? (
-                                <div
-                                  className="group flex items-center gap-1.5 cursor-pointer"
-                                  onClick={() => handleStartEdit(seat)}
-                                >
+                                <div className="group flex items-center gap-1.5">
                                   <Package size={10} className="text-neon-pink/50 shrink-0" />
                                   {seat.supplies ? (
                                     <span className="text-sm text-white/60 truncate group-hover:text-white/80 transition-colors">
@@ -337,6 +363,12 @@ export default function SuppliesSummary() {
                               <div
                                 className="w-3 h-3 rounded-full shrink-0"
                                 style={{ backgroundColor: seat.cheeringColor }}
+                              />
+                            )}
+                            {seat.memberName && !isEditing(seat) && (
+                              <ExternalLink
+                                size={12}
+                                className="text-white/10 group-hover:text-neon-cyan/60 shrink-0 transition-all opacity-0 group-hover:opacity-100"
                               />
                             )}
                           </div>

@@ -1,6 +1,6 @@
-import { useState, useMemo, useEffect } from 'react'
-import { useParams, useNavigate, useSearchParams } from 'react-router-dom'
-import { ArrowLeft, ChevronRight, RotateCcw, Printer } from 'lucide-react'
+import { useState, useMemo, useEffect, useRef } from 'react'
+import { useParams, useNavigate, useSearchParams, useLocation } from 'react-router-dom'
+import { ArrowLeft, ChevronRight, RotateCcw, Printer, Package } from 'lucide-react'
 import { useVenueStore } from '@/store/venueStore'
 import { SeatDetailPanel } from '@/components/SeatDetailPanel'
 import { BatchActions } from '@/components/BatchActions'
@@ -11,6 +11,7 @@ import { UndoRedoButtons } from '@/components/UndoRedoButtons'
 export default function ZonePlan() {
   const { zoneId } = useParams<{ zoneId: string }>()
   const navigate = useNavigate()
+  const location = useLocation()
   const [searchParams, setSearchParams] = useSearchParams()
   const zone = useVenueStore((s) => s.zones.find((z) => z.id === zoneId))
   const zones = useVenueStore((s) => s.zones)
@@ -19,6 +20,15 @@ export default function ZonePlan() {
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set())
   const [panelOpen, setPanelOpen] = useState(false)
   const [highlightedSeatIds, setHighlightedSeatIds] = useState<Set<string>>(new Set())
+  const [isJumpedFromSupplies, setIsJumpedFromSupplies] = useState(false)
+  const hasScrolledRef = useRef(false)
+
+  const locationState = location.state as {
+    from?: string
+    filterMode?: string
+    searchText?: string
+    expandedZones?: string[]
+  } | null
 
   const selectedSeatIds = useMemo(() => Array.from(selectedIds), [selectedIds])
 
@@ -30,9 +40,34 @@ export default function ZonePlan() {
       if (seatExists) {
         setSelectedSeatId(seatIdFromUrl)
         setPanelOpen(true)
+        setHighlightedSeatIds(new Set([seatIdFromUrl]))
+        if (locationState?.from === 'supplies') {
+          setIsJumpedFromSupplies(true)
+        }
+        setTimeout(() => {
+          const seatElement = document.querySelector(`[data-seat-id="${seatIdFromUrl}"]`)
+          if (seatElement && !hasScrolledRef.current) {
+            seatElement.scrollIntoView({ behavior: 'smooth', block: 'center', inline: 'center' })
+            hasScrolledRef.current = true
+          }
+        }, 100)
       }
     }
-  }, [searchParams, zoneId])
+  }, [searchParams, zoneId, locationState])
+
+  const handleBack = () => {
+    if (locationState?.from === 'supplies') {
+      navigate('/supplies', {
+        state: {
+          filterMode: locationState.filterMode,
+          searchText: locationState.searchText,
+          expandedZones: locationState.expandedZones,
+        },
+      })
+    } else {
+      navigate('/')
+    }
+  }
 
   const clearSeatParam = () => {
     if (searchParams.has('seatId')) {
@@ -86,12 +121,23 @@ export default function ZonePlan() {
     <div className="min-h-screen bg-base bg-grid-pattern flex flex-col">
       <header className="glass-panel border-0 border-b border-white/[0.06] rounded-none px-4 py-3 flex items-center gap-3 sticky top-0 z-30">
         <button
-          onClick={() => navigate('/')}
+          onClick={handleBack}
           className="flex items-center gap-1 text-white/40 hover:text-white transition-colors text-sm"
         >
-          <ArrowLeft size={16} /> 总览
+          <ArrowLeft size={16} /> {locationState?.from === 'supplies' ? '物资清单' : '总览'}
         </button>
         <ChevronRight size={14} className="text-white/15" />
+        {locationState?.from === 'supplies' && (
+          <>
+            <button
+              onClick={handleBack}
+              className="flex items-center gap-1 text-neon-cyan/60 hover:text-neon-cyan transition-colors text-xs"
+            >
+              <Package size={12} /> 物资清单
+            </button>
+            <ChevronRight size={14} className="text-white/15" />
+          </>
+        )}
 
         <div className="flex items-center gap-2 overflow-x-auto flex-1">
           {zones.map((z) => (
@@ -156,6 +202,7 @@ export default function ZonePlan() {
               onBatchSelect={handleBatchSelect}
               selectedIds={selectedIds}
               highlightedIds={highlightedSeatIds}
+              isJumpedFromSupplies={isJumpedFromSupplies}
             />
           </div>
 
@@ -199,6 +246,7 @@ function SeatGridWrapper({
   onBatchSelect,
   selectedIds,
   highlightedIds,
+  isJumpedFromSupplies,
 }: {
   zoneId: string
   selectedSeatId: string | null
@@ -206,6 +254,7 @@ function SeatGridWrapper({
   onBatchSelect: (ids: Set<string>) => void
   selectedIds: Set<string>
   highlightedIds: Set<string>
+  isJumpedFromSupplies: boolean
 }) {
   const zone = useVenueStore((s) => s.zones.find((z) => z.id === zoneId))
   const seats = useVenueStore((s) => s.seats[zoneId] || [])
@@ -318,12 +367,18 @@ function SeatGridWrapper({
               }
 
               if (seat.isObstructed) cellClass += 'seat-obstructed '
-              if (isBatchSelected || isCurrentlySelected) cellClass += 'seat-selected '
+              if (isBatchSelected || isCurrentlySelected) {
+                cellClass += 'seat-selected '
+                if (isJumpedFromSupplies && isCurrentlySelected) {
+                  cellClass += 'seat-jump-highlight '
+                }
+              }
               if (isHighlighted && !isBatchSelected && !isCurrentlySelected) cellClass += 'animate-pulse-soft '
 
               return (
                 <div
                   key={col}
+                  data-seat-id={seat.id}
                   className={cellClass}
                   style={bgStyle}
                   onMouseDown={(e) => handleMouseDown(seat.id, e)}

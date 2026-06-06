@@ -71,6 +71,18 @@ body {
   .seat-selected {
     @apply ring-2 ring-white/70 scale-110 z-10;
   }
+  .seat-jump-highlight {
+    animation: seat-jump-flash 1.5s ease-out 2;
+  }
+  @keyframes seat-jump-flash {
+    0%, 100% {
+      box-shadow: 0 0 10px rgba(0, 245, 255, 0.3), 0 0 30px rgba(0, 245, 255, 0.1);
+    }
+    50% {
+      box-shadow: 0 0 20px rgba(0, 245, 255, 0.8), 0 0 60px rgba(0, 245, 255, 0.4);
+      transform: scale(1.15);
+    }
+  }
   .animate-pulse-soft {
     animation: pulse-soft 2s ease-in-out infinite;
   }
