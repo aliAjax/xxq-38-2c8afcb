@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { Paintbrush, Ticket, Trash2, X } from 'lucide-react'
+import { Paintbrush, Ticket, Trash2, X, Eye } from 'lucide-react'
 import { useVenueStore } from '@/store/venueStore'
 import type { TicketStatus } from '@/types'
 
@@ -18,6 +18,8 @@ export function BatchActions({ zoneId, selectedSeatIds, onClearSelection }: Batc
   const batchUpdateSeats = useVenueStore((s) => s.batchUpdateSeats)
   const [colorPickerOpen, setColorPickerOpen] = useState(false)
   const [ticketPickerOpen, setTicketPickerOpen] = useState(false)
+  const [obstructionPickerOpen, setObstructionPickerOpen] = useState(false)
+  const [obstructionNote, setObstructionNote] = useState('')
 
   if (selectedSeatIds.length === 0) return null
 
@@ -42,6 +44,16 @@ export function BatchActions({ zoneId, selectedSeatIds, onClearSelection }: Batc
       ticketStatus: 'none',
       supplies: '',
     })
+    onClearSelection()
+  }
+
+  const handleBatchObstruction = (isObstructed: boolean) => {
+    batchUpdateSeats(zoneId, selectedSeatIds, {
+      isObstructed,
+      obstructionNote: isObstructed ? obstructionNote.trim() : '',
+    })
+    setObstructionPickerOpen(false)
+    setObstructionNote('')
     onClearSelection()
   }
 
@@ -74,7 +86,7 @@ export function BatchActions({ zoneId, selectedSeatIds, onClearSelection }: Batc
 
       <div className="relative">
         <button
-          onClick={() => { setTicketPickerOpen(!ticketPickerOpen); setColorPickerOpen(false) }}
+          onClick={() => { setTicketPickerOpen(!ticketPickerOpen); setColorPickerOpen(false); setObstructionPickerOpen(false) }}
           className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg bg-surface-light border border-white/[0.06] text-white/50 hover:text-white text-xs transition-all"
         >
           <Ticket size={12} /> 换票状态
@@ -96,6 +108,43 @@ export function BatchActions({ zoneId, selectedSeatIds, onClearSelection }: Batc
                 {opt.label}
               </button>
             ))}
+          </div>
+        )}
+      </div>
+
+      <div className="relative">
+        <button
+          onClick={() => { setObstructionPickerOpen(!obstructionPickerOpen); setColorPickerOpen(false); setTicketPickerOpen(false) }}
+          className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg bg-surface-light border border-white/[0.06] text-white/50 hover:text-white text-xs transition-all"
+        >
+          <Eye size={12} /> 视线遮挡
+        </button>
+        {obstructionPickerOpen && (
+          <div className="absolute bottom-full left-0 mb-2 glass-panel p-3 z-20 w-56">
+            <div className="mb-2">
+              <div className="text-xs text-white/30 mb-1.5">遮挡原因（可选）</div>
+              <input
+                value={obstructionNote}
+                onChange={(e) => setObstructionNote(e.target.value)}
+                placeholder="如：柱子、音响、大屏幕..."
+                className="w-full bg-surface-light border border-white/10 rounded-lg px-2 py-1.5 text-xs text-white placeholder-white/20 focus:outline-none focus:border-yellow-400/50 transition-colors"
+              />
+            </div>
+            <div className="flex gap-2">
+              <button
+                onClick={() => handleBatchObstruction(true)}
+                className="flex-1 px-2 py-1.5 rounded text-xs transition-all"
+                style={{ backgroundColor: '#FFE60020', color: '#FFE600', border: '1px solid #FFE60040' }}
+              >
+                设置遮挡
+              </button>
+              <button
+                onClick={() => handleBatchObstruction(false)}
+                className="flex-1 px-2 py-1.5 rounded text-xs transition-all bg-white/[0.04] text-white/40 border border-white/[0.06] hover:text-white/60"
+              >
+                取消遮挡
+              </button>
+            </div>
           </div>
         )}
       </div>

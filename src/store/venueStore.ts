@@ -310,6 +310,7 @@ export const useVenueStore = create<VenueStore>()(
         let label = historyLabel || '批量更新'
         if ('cheeringColor' in updates) label = '批量上色'
         else if ('ticketStatus' in updates) label = '批量换票状态'
+        else if ('isObstructed' in updates) label = '批量遮挡标记'
         else if (Object.keys(updates).length >= 5) label = '清空座位'
 
         const author = '我'
