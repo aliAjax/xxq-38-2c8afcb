@@ -34,6 +34,7 @@ interface HistoryEntry {
 export interface SeatSearchResult {
   seat: Seat
   zoneName: string
+  zoneId: string
   matchedFields: string[]
 }
 
@@ -42,6 +43,15 @@ export interface SearchOptions {
   seatNumber?: string
   supplies?: string
   ticketStatus?: TicketStatus
+  obstructionNote?: string
+  isObstructed?: boolean
+}
+
+export interface GlobalSearchGroup {
+  zoneId: string
+  zoneName: string
+  zoneColor: string
+  results: SeatSearchResult[]
 }
 
 function generateId(): string {
@@ -113,6 +123,7 @@ interface VenueStore extends VenueData {
   getZoneStats: (zoneId: string) => { total: number; assigned: number; obstructed: number; ticketStats: Record<TicketStatus, number> }
   getGlobalStats: () => { totalZones: number; totalSeats: number; totalAssigned: number; totalObstructed: number; ticketStats: Record<TicketStatus, number> }
   searchSeats: (zoneId: string, options: SearchOptions) => SeatSearchResult[]
+  searchAllSeats: (options: SearchOptions) => GlobalSearchGroup[]
   resetZoneLayouts: (recordHistory?: boolean) => void
   ensureZoneLayouts: () => void
   undo: () => void
@@ -1136,16 +1147,49 @@ export const useVenueStore = create<VenueStore>()(
             }
           }
 
+          if (options.obstructionNote && options.obstructionNote.trim()) {
+            const searchTerm = options.obstructionNote.trim().toLowerCase()
+            if (seat.obstructionNote.toLowerCase().includes(searchTerm)) {
+              matchedFields.push('obstructionNote')
+            }
+          }
+
+          if (options.isObstructed !== undefined) {
+            if (seat.isObstructed === options.isObstructed) {
+              matchedFields.push('isObstructed')
+            }
+          }
+
           if (matchedFields.length > 0) {
             results.push({
               seat,
               zoneName: zone.name,
+              zoneId: zone.id,
               matchedFields,
             })
           }
         }
 
         return results
+      },
+
+      searchAllSeats: (options) => {
+        const { zones } = get()
+        const groups: GlobalSearchGroup[] = []
+
+        for (const zone of zones) {
+          const results = get().searchSeats(zone.id, options)
+          if (results.length > 0) {
+            groups.push({
+              zoneId: zone.id,
+              zoneName: zone.name,
+              zoneColor: zone.color,
+              results,
+            })
+          }
+        }
+
+        return groups
       },
 
       undo: () => {

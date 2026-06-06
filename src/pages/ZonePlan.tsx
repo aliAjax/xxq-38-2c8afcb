@@ -20,27 +20,70 @@ export default function ZonePlan() {
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set())
   const [panelOpen, setPanelOpen] = useState(false)
   const [highlightedSeatIds, setHighlightedSeatIds] = useState<Set<string>>(new Set())
+  const [globalSearchHighlightedIds, setGlobalSearchHighlightedIds] = useState<Set<string>>(new Set())
   const [isJumpedFromSupplies, setIsJumpedFromSupplies] = useState(false)
   const hasScrolledRef = useRef(false)
+
+  const mergedHighlightedIds = useMemo(() => {
+    if (highlightedSeatIds.size > 0) {
+      return highlightedSeatIds
+    }
+    return globalSearchHighlightedIds
+  }, [highlightedSeatIds, globalSearchHighlightedIds])
 
   const locationState = location.state as {
     from?: string
     filterMode?: string
     searchText?: string
     expandedZones?: string[]
+    globalSearchQuery?: string
+    globalSearchTicketStatus?: string
+    globalSearchObstruction?: string
   } | null
 
   const selectedSeatIds = useMemo(() => Array.from(selectedIds), [selectedIds])
 
+  const searchSeats = useVenueStore((s) => s.searchSeats)
+
   useEffect(() => {
     const seatIdFromUrl = searchParams.get('seatId')
+    const fromGlobalSearch = locationState?.from === 'overview' && (
+      locationState.globalSearchQuery ||
+      locationState.globalSearchTicketStatus ||
+      locationState.globalSearchObstruction
+    )
+
+    if (fromGlobalSearch && zoneId) {
+      const options: any = {}
+      if (locationState.globalSearchQuery) {
+        options.memberName = locationState.globalSearchQuery
+        options.seatNumber = locationState.globalSearchQuery
+        options.supplies = locationState.globalSearchQuery
+        options.obstructionNote = locationState.globalSearchQuery
+      }
+      if (locationState.globalSearchTicketStatus) {
+        options.ticketStatus = locationState.globalSearchTicketStatus
+      }
+      if (locationState.globalSearchObstruction === 'obstructed') {
+        options.isObstructed = true
+      } else if (locationState.globalSearchObstruction === 'clear') {
+        options.isObstructed = false
+      }
+
+      const results = searchSeats(zoneId, options)
+      const allHighlightedIds = new Set(results.map((r) => r.seat.id))
+      setGlobalSearchHighlightedIds(allHighlightedIds)
+    }
+
     if (seatIdFromUrl && zoneId) {
       const zoneSeats = useVenueStore.getState().seats[zoneId] || []
       const seatExists = zoneSeats.some((s) => s.id === seatIdFromUrl)
       if (seatExists) {
         setSelectedSeatId(seatIdFromUrl)
         setPanelOpen(true)
-        setHighlightedSeatIds(new Set([seatIdFromUrl]))
+        if (!fromGlobalSearch) {
+          setHighlightedSeatIds(new Set([seatIdFromUrl]))
+        }
         if (locationState?.from === 'supplies') {
           setIsJumpedFromSupplies(true)
         }
@@ -53,7 +96,7 @@ export default function ZonePlan() {
         }, 100)
       }
     }
-  }, [searchParams, zoneId, locationState])
+  }, [searchParams, zoneId, locationState, searchSeats])
 
   const handleBack = () => {
     if (locationState?.from === 'supplies') {
@@ -201,7 +244,7 @@ export default function ZonePlan() {
               onSelectSeat={handleSelectSeat}
               onBatchSelect={handleBatchSelect}
               selectedIds={selectedIds}
-              highlightedIds={highlightedSeatIds}
+              highlightedIds={mergedHighlightedIds}
               isJumpedFromSupplies={isJumpedFromSupplies}
             />
           </div>

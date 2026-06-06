@@ -9,6 +9,7 @@ import { MemberImportModal } from '@/components/MemberImportModal'
 import { ExchangeTodoPanel } from '@/components/ExchangeTodoPanel'
 import { FloorPlanEditor } from '@/components/FloorPlanEditor'
 import { UndoRedoButtons } from '@/components/UndoRedoButtons'
+import { GlobalSearch } from '@/components/GlobalSearch'
 
 export default function Overview() {
   const navigate = useNavigate()
@@ -114,6 +115,7 @@ export default function Overview() {
           </div>
 
           <div className="lg:col-span-1 space-y-4">
+            <GlobalSearch />
             <GlobalStats />
             <ExchangeTodoPanel />
           </div>
