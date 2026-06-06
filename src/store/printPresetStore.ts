@@ -57,13 +57,12 @@ interface PrintPresetStore {
   savePreset: (name: string, options: PrintOptions) => PrintPreset
   updatePreset: (id: string, options: PrintOptions) => void
   deletePreset: (id: string) => void
-  renamePreset: (id: string, name: string) => void
   setActivePreset: (id: string | null) => void
 }
 
 export const usePrintPresetStore = create<PrintPresetStore>()(
   persist(
-    (set, get) => ({
+    (set) => ({
       presets: defaultPresets,
       activePresetId: null,
 
@@ -92,14 +91,6 @@ export const usePrintPresetStore = create<PrintPresetStore>()(
         set((state) => ({
           presets: state.presets.filter((p) => p.id !== id),
           activePresetId: state.activePresetId === id ? null : state.activePresetId,
-        }))
-      },
-
-      renamePreset: (id, name) => {
-        set((state) => ({
-          presets: state.presets.map((p) =>
-            p.id === id ? { ...p, name } : p
-          ),
         }))
       },
 
