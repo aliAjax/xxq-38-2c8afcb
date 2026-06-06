@@ -1160,9 +1160,10 @@ export const useVenueStore = create<VenueStore>()(
         }
 
         if (entry.beforeZones) {
+          const hasSeatChanges = Object.keys(entry.before).length > 0
           set({
             zones: entry.beforeZones,
-            seats: entry.before,
+            seats: hasSeatChanges ? entry.before : state.seats,
             past: newPast,
             future: [...state.future, futureEntry],
             canUndo: newPast.length > 0,
@@ -1206,9 +1207,10 @@ export const useVenueStore = create<VenueStore>()(
         }
 
         if (entry.beforeZones) {
+          const hasSeatChanges = Object.keys(entry.before).length > 0
           set({
             zones: entry.beforeZones,
-            seats: entry.before,
+            seats: hasSeatChanges ? entry.before : state.seats,
             past: [...state.past, pastEntry],
             future: newFuture,
             canUndo: true,

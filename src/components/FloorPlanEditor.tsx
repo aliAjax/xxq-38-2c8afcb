@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom'
 import {
   Edit, Eye, RotateCcw, Move, Maximize2, Palette, Users,
   Trash2, Copy, ZoomIn, ZoomOut, Maximize, Undo2, Redo2,
-  Grab, MousePointer2
+  MousePointer2
 } from 'lucide-react'
 import { useVenueStore } from '@/store/venueStore'
 import { useUIStore } from '@/store/uiStore'
