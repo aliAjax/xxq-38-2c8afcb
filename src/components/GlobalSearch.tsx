@@ -1,6 +1,6 @@
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useRef } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { Search, X, User, MapPin, Package, Ticket, Eye, ChevronDown, ChevronRight } from 'lucide-react'
+import { Search, X, Package, Ticket, Eye, ChevronDown, ChevronRight } from 'lucide-react'
 import { useVenueStore, type GlobalSearchGroup, type SearchOptions } from '@/store/venueStore'
 import type { TicketStatus } from '@/types'
 
@@ -27,6 +27,7 @@ export function GlobalSearch() {
   const [searchGroups, setSearchGroups] = useState<GlobalSearchGroup[]>([])
   const [hasSearched, setHasSearched] = useState(false)
   const [expandedZones, setExpandedZones] = useState<Set<string>>(new Set())
+  const hasAutoExpandedRef = useRef(false)
 
   const searchAllSeats = useVenueStore((s) => s.searchAllSeats)
 
@@ -36,6 +37,7 @@ export function GlobalSearch() {
     setObstructionFilter('')
     setSearchGroups([])
     setHasSearched(false)
+    hasAutoExpandedRef.current = false
   }, [])
 
   useEffect(() => {
@@ -61,8 +63,9 @@ export function GlobalSearch() {
       setSearchGroups(results)
       setHasSearched(true)
 
-      if (results.length > 0 && expandedZones.size === 0) {
+      if (results.length > 0 && !hasAutoExpandedRef.current) {
         setExpandedZones(new Set(results.map((g) => g.zoneId)))
+        hasAutoExpandedRef.current = true
       }
     } else {
       setSearchGroups([])

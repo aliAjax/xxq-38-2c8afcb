@@ -1,7 +1,7 @@
 import { useState, useMemo, useEffect, useRef } from 'react'
 import { useParams, useNavigate, useSearchParams, useLocation } from 'react-router-dom'
 import { ArrowLeft, ChevronRight, RotateCcw, Printer, Package } from 'lucide-react'
-import { useVenueStore } from '@/store/venueStore'
+import { useVenueStore, type SearchOptions } from '@/store/venueStore'
 import { SeatDetailPanel } from '@/components/SeatDetailPanel'
 import { BatchActions } from '@/components/BatchActions'
 import { ZoneStatsPanel } from '@/components/ZoneStatsPanel'
@@ -54,7 +54,7 @@ export default function ZonePlan() {
     )
 
     if (fromGlobalSearch && zoneId) {
-      const options: any = {}
+      const options: SearchOptions = {}
       if (locationState.globalSearchQuery) {
         options.memberName = locationState.globalSearchQuery
         options.seatNumber = locationState.globalSearchQuery
@@ -62,7 +62,7 @@ export default function ZonePlan() {
         options.obstructionNote = locationState.globalSearchQuery
       }
       if (locationState.globalSearchTicketStatus) {
-        options.ticketStatus = locationState.globalSearchTicketStatus
+        options.ticketStatus = locationState.globalSearchTicketStatus as SearchOptions['ticketStatus']
       }
       if (locationState.globalSearchObstruction === 'obstructed') {
         options.isObstructed = true
