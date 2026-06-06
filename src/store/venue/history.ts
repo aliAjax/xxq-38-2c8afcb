@@ -13,15 +13,19 @@ export function pushHistory(
   }
 ): void {
   const before = entry.before ?? cloneSeats(state.seats)
-  const beforeZones = entry.beforeZones ?? state.zones.map((z) => ({ ...z }))
+
+  const historyEntry: HistoryEntry = {
+    type: entry.type,
+    before,
+    label: entry.label,
+  }
+
+  if (entry.beforeZones !== undefined) {
+    historyEntry.beforeZones = entry.beforeZones
+  }
 
   set((s) => ({
-    past: [...s.past, {
-      type: entry.type,
-      before,
-      beforeZones,
-      label: entry.label,
-    }],
+    past: [...s.past, historyEntry],
     future: [],
     canUndo: true,
     canRedo: false,

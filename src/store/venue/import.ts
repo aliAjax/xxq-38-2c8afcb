@@ -207,6 +207,7 @@ export function createImportSlice(set: VenueSet, get: VenueGet): Pick<
         if (recordHistory) {
           pushHistory(set, get(), {
             type: 'importData',
+            beforeZones: get().zones.map((z) => ({ ...z })),
             label: '导入数据',
           })
         }
@@ -526,6 +527,7 @@ export function createImportSlice(set: VenueSet, get: VenueGet): Pick<
       if (recordHistory) {
         pushHistory(set, get(), {
           type: 'clearAll',
+          beforeZones: get().zones.map((z) => ({ ...z })),
           label: '清空全部数据',
         })
       }

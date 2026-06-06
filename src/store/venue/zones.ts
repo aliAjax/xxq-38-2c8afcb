@@ -24,6 +24,7 @@ export function createZonesSlice(set: VenueSet, get: VenueGet): Pick<
       if (recordHistory) {
         pushHistory(set, get(), {
           type: 'addZone',
+          beforeZones: get().zones.map((z) => ({ ...z })),
           label: `创建区域「${name}」`,
         })
       }
@@ -43,6 +44,7 @@ export function createZonesSlice(set: VenueSet, get: VenueGet): Pick<
       if (recordHistory) {
         pushHistory(set, state, {
           type: 'removeZone',
+          beforeZones: state.zones.map((z) => ({ ...z })),
           label: `删除区域「${zone.name}」`,
         })
       }
@@ -91,6 +93,7 @@ export function createZonesSlice(set: VenueSet, get: VenueGet): Pick<
       if (recordHistory) {
         pushHistory(set, state, {
           type: 'duplicateZone',
+          beforeZones: state.zones.map((z) => ({ ...z })),
           label: `复制区域「${sourceZone.name}」`,
         })
       }
@@ -123,6 +126,7 @@ export function createZonesSlice(set: VenueSet, get: VenueGet): Pick<
         pushHistory(set, state, {
           type: 'updateZoneLayout',
           before: {},
+          beforeZones: state.zones.map((z) => ({ ...z })),
           label: historyLabel || `调整「${zone.name}」布局`,
         })
       }
@@ -140,6 +144,7 @@ export function createZonesSlice(set: VenueSet, get: VenueGet): Pick<
         pushHistory(set, state, {
           type: 'resetZoneLayouts',
           before: {},
+          beforeZones: state.zones.map((z) => ({ ...z })),
           label: '重置区域布局',
         })
       }

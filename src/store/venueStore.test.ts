@@ -447,4 +447,96 @@ describe('venueStore', () => {
       expect(zone!.cols).toBe(2)
     })
   })
+
+  describe('multi-zone undo/redo', () => {
+    let zoneA: string
+    let zoneB: string
+
+    beforeEach(() => {
+      const store = useVenueStore.getState()
+      zoneA = store.addZone('A区', 2, 2, '#ff0000')
+      zoneB = store.addZone('B区', 2, 2, '#00ff00')
+
+      const seatsA = useVenueStore.getState().seats[zoneA]
+      const seatsB = useVenueStore.getState().seats[zoneB]
+
+      store.updateSeat(zoneA, seatsA[0].id, { memberName: 'A成员' }, false)
+      store.updateSeat(zoneB, seatsB[0].id, { memberName: 'B成员' }, false)
+
+      useVenueStore.setState({ past: [], future: [], canUndo: false, canRedo: false })
+    })
+
+    it('should not lose other zone seats when undoing seat update', () => {
+      const store = useVenueStore.getState()
+      const seatsA = store.seats[zoneA]
+      const seatA0 = seatsA[0]
+
+      store.updateSeat(zoneA, seatA0.id, { memberName: '新A成员' }, true)
+
+      expect(useVenueStore.getState().seats[zoneA].find((s: Seat) => s.id === seatA0.id)!.memberName).toBe('新A成员')
+      expect(useVenueStore.getState().seats[zoneB].length).toBe(4)
+      expect(useVenueStore.getState().seats[zoneB][0].memberName).toBe('B成员')
+
+      useVenueStore.getState().undo()
+
+      expect(useVenueStore.getState().seats[zoneA].find((s: Seat) => s.id === seatA0.id)!.memberName).toBe('A成员')
+      expect(useVenueStore.getState().seats[zoneB].length).toBe(4)
+      expect(useVenueStore.getState().seats[zoneB][0].memberName).toBe('B成员')
+    })
+
+    it('should not lose other zone seats when redoing seat update', () => {
+      const store = useVenueStore.getState()
+      const seatsA = store.seats[zoneA]
+      const seatA0 = seatsA[0]
+
+      store.updateSeat(zoneA, seatA0.id, { memberName: '新A成员' }, true)
+      useVenueStore.getState().undo()
+
+      expect(useVenueStore.getState().seats[zoneA].find((s: Seat) => s.id === seatA0.id)!.memberName).toBe('A成员')
+      expect(useVenueStore.getState().seats[zoneB][0].memberName).toBe('B成员')
+
+      useVenueStore.getState().redo()
+
+      expect(useVenueStore.getState().seats[zoneA].find((s: Seat) => s.id === seatA0.id)!.memberName).toBe('新A成员')
+      expect(useVenueStore.getState().seats[zoneB].length).toBe(4)
+      expect(useVenueStore.getState().seats[zoneB][0].memberName).toBe('B成员')
+    })
+
+    it('should not lose other zone seats when undoing batch update', () => {
+      const store = useVenueStore.getState()
+      const seatsA = store.seats[zoneA]
+      const seatIds = seatsA.map((s: Seat) => s.id)
+
+      store.batchUpdateSeats(zoneA, seatIds, { ticketStatus: 'confirmed' as TicketStatus }, true)
+
+      expect(useVenueStore.getState().seats[zoneA].every((s: Seat) => s.ticketStatus === 'confirmed')).toBe(true)
+      expect(useVenueStore.getState().seats[zoneB].every((s: Seat) => s.ticketStatus === 'none')).toBe(true)
+
+      useVenueStore.getState().undo()
+
+      expect(useVenueStore.getState().seats[zoneA].every((s: Seat) => s.ticketStatus === 'none')).toBe(true)
+      expect(useVenueStore.getState().seats[zoneB].every((s: Seat) => s.ticketStatus === 'none')).toBe(true)
+      expect(useVenueStore.getState().seats[zoneB][0].memberName).toBe('B成员')
+    })
+
+    it('should undo addZone and restore other zones seats', () => {
+      const store = useVenueStore.getState()
+      const beforeZonesCount = store.zones.length
+      const zoneC = store.addZone('C区', 3, 3, '#0000ff', true)
+
+      expect(useVenueStore.getState().zones.length).toBe(beforeZonesCount + 1)
+      expect(useVenueStore.getState().seats[zoneC]).toHaveLength(9)
+      expect(useVenueStore.getState().seats[zoneA]).toHaveLength(4)
+      expect(useVenueStore.getState().seats[zoneB]).toHaveLength(4)
+
+      useVenueStore.getState().undo()
+
+      expect(useVenueStore.getState().zones.length).toBe(beforeZonesCount)
+      expect(useVenueStore.getState().seats[zoneC]).toBeUndefined()
+      expect(useVenueStore.getState().seats[zoneA]).toHaveLength(4)
+      expect(useVenueStore.getState().seats[zoneB]).toHaveLength(4)
+      expect(useVenueStore.getState().seats[zoneA][0].memberName).toBe('A成员')
+      expect(useVenueStore.getState().seats[zoneB][0].memberName).toBe('B成员')
+    })
+  })
 })
