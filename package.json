@@ -11,7 +11,8 @@
     "check": "tsc -b --noEmit",
     "test": "vitest run",
     "test:watch": "vitest",
-    "test:ui": "vitest --ui"
+    "test:ui": "vitest --ui",
+    "verify": "pnpm check && pnpm lint && pnpm test"
   },
   "dependencies": {
     "clsx": "^2.1.1",
