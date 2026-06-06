@@ -846,7 +846,7 @@ export const useVenueStore = create<VenueStore>()(
                   existingMember: existingSeat.memberName,
                   newMember: seat.memberName,
                   willBeOverwritten: effectiveStrategy === 'overwrite',
-                  choice: effectiveStrategy === 'overwrite' ? 'overwrite' : 'keep',
+                  choice: effectiveStrategy === 'overwrite' ? 'overwrite' : 'skip',
                   existingTicketStatus: existingSeat.ticketStatus,
                   newTicketStatus: seat.ticketStatus,
                   existingCheeringColor: existingSeat.cheeringColor,
@@ -971,11 +971,11 @@ export const useVenueStore = create<VenueStore>()(
                 const hasConflict = existingSeat.memberName && newSeat.memberName && existingSeat.memberName !== newSeat.memberName
                 const conflictChoice = seatConflictChoices?.[existingSeat.id]
 
-                let seatAction: 'overwrite' | 'keep' | 'mergeEmpty'
+                let seatAction: 'overwrite' | 'keep' | 'skip' | 'mergeEmpty'
                 if (hasConflict && conflictChoice) {
-                  seatAction = conflictChoice === 'overwrite' ? 'overwrite' : 'keep'
+                  seatAction = conflictChoice
                 } else if (hasConflict) {
-                  seatAction = effectiveStrategy === 'overwrite' ? 'overwrite' : 'keep'
+                  seatAction = effectiveStrategy === 'overwrite' ? 'overwrite' : 'skip'
                 } else {
                   seatAction = effectiveStrategy === 'overwrite' ? 'overwrite' : 'mergeEmpty'
                 }
@@ -1018,6 +1018,37 @@ export const useVenueStore = create<VenueStore>()(
                   existingSeat.ticketStatus = newSeat.ticketStatus
                   existingSeat.supplies = newSeat.supplies
                   shouldUpdate = true
+                } else if (seatAction === 'keep') {
+                  if (existingSeat.ticketStatus !== newSeat.ticketStatus) {
+                    activityLogs.push(createActivityLogEntry('changeTicketStatus', author, {
+                      oldValue: existingSeat.ticketStatus,
+                      newValue: newSeat.ticketStatus,
+                      fieldName: 'ticketStatus',
+                      note: '通过导入更新（保留成员）',
+                    }))
+                    existingSeat.ticketStatus = newSeat.ticketStatus
+                    shouldUpdate = true
+                  }
+                  if (existingSeat.cheeringColor !== newSeat.cheeringColor) {
+                    activityLogs.push(createActivityLogEntry('updateCheeringColor', author, {
+                      oldValue: existingSeat.cheeringColor || undefined,
+                      newValue: newSeat.cheeringColor || undefined,
+                      fieldName: 'cheeringColor',
+                      note: '通过导入更新（保留成员）',
+                    }))
+                    existingSeat.cheeringColor = newSeat.cheeringColor
+                    shouldUpdate = true
+                  }
+                  if (existingSeat.supplies !== newSeat.supplies) {
+                    activityLogs.push(createActivityLogEntry('updateSupplies', author, {
+                      oldValue: existingSeat.supplies || undefined,
+                      newValue: newSeat.supplies || undefined,
+                      fieldName: 'supplies',
+                      note: '通过导入更新（保留成员）',
+                    }))
+                    existingSeat.supplies = newSeat.supplies
+                    shouldUpdate = true
+                  }
                 } else if (seatAction === 'mergeEmpty') {
                   if (!existingSeat.memberName && newSeat.memberName) {
                     activityLogs.push(createActivityLogEntry('assignMember', author, {

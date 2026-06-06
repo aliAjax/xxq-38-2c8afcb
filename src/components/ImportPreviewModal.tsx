@@ -45,16 +45,6 @@ export function ImportPreviewModal({ open, jsonContent, fileName, onClose, onSuc
     setSelectedZoneIds(new Set(allZones.filter((z) => z.selected).map((z) => z.zone.id)))
   }, [allZones])
 
-  const allConflictSeats = useMemo(() => {
-    const seats: { zoneId: string; seatId: string }[] = []
-    for (const zone of [...preview.overwriteZones, ...preview.mergeZones]) {
-      for (const conflict of zone.conflictSeats) {
-        seats.push({ zoneId: zone.zone.id, seatId: conflict.seatId })
-      }
-    }
-    return seats
-  }, [preview])
-
   const conflictStats = useMemo(() => {
     let keep = 0
     let overwrite = 0
