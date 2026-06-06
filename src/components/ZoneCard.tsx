@@ -1,6 +1,6 @@
 import { useMemo } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { Users, AlertTriangle, Ticket, ArrowRight, Trash2 } from 'lucide-react'
+import { Users, AlertTriangle, Ticket, ArrowRight, Trash2, Copy } from 'lucide-react'
 import { useVenueStore } from '@/store/venueStore'
 
 function computeZoneStats(seats: { memberName: string; isObstructed: boolean; ticketStatus: string }[]) {
@@ -24,12 +24,18 @@ export function ZoneCard({ zoneId }: { zoneId: string }) {
   const zone = useVenueStore((s) => s.zones.find((z) => z.id === zoneId))
   const zoneSeats = useVenueStore((s) => s.seats[zoneId] || [])
   const removeZone = useVenueStore((s) => s.removeZone)
+  const duplicateZone = useVenueStore((s) => s.duplicateZone)
 
   const stats = useMemo(() => computeZoneStats(zoneSeats), [zoneSeats])
 
   if (!zone) return null
 
   const pct = stats.total > 0 ? Math.round((stats.assigned / stats.total) * 100) : 0
+
+  const handleDuplicate = (e: React.MouseEvent) => {
+    e.stopPropagation()
+    duplicateZone(zoneId)
+  }
 
   return (
     <div className="glass-panel p-4 hover:border-white/10 transition-all group relative animate-fade-in">
@@ -43,12 +49,22 @@ export function ZoneCard({ zoneId }: { zoneId: string }) {
           <h3 className="font-bold text-white text-base">{zone.name}</h3>
           <span className="text-xs text-white/30 font-mono">{zone.rows}×{zone.cols}</span>
         </div>
-        <button
-          onClick={(e) => { e.stopPropagation(); removeZone(zoneId) }}
-          className="opacity-0 group-hover:opacity-100 p-1.5 rounded-lg hover:bg-red-500/20 text-white/30 hover:text-red-400 transition-all"
-        >
-          <Trash2 size={14} />
-        </button>
+        <div className="flex items-center gap-1">
+          <button
+            onClick={handleDuplicate}
+            className="opacity-0 group-hover:opacity-100 p-1.5 rounded-lg hover:bg-white/10 text-white/30 hover:text-white/70 transition-all"
+            title="复制区域"
+          >
+            <Copy size={14} />
+          </button>
+          <button
+            onClick={(e) => { e.stopPropagation(); removeZone(zoneId) }}
+            className="opacity-0 group-hover:opacity-100 p-1.5 rounded-lg hover:bg-red-500/20 text-white/30 hover:text-red-400 transition-all"
+            title="删除区域"
+          >
+            <Trash2 size={14} />
+          </button>
+        </div>
       </div>
 
       <div className="space-y-2.5 mb-4">

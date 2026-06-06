@@ -11,6 +11,9 @@ type HistoryActionType =
   | 'clearZoneSeats'
   | 'importData'
   | 'clearAll'
+  | 'addZone'
+  | 'removeZone'
+  | 'duplicateZone'
 
 interface HistoryEntry {
   type: HistoryActionType
@@ -83,8 +86,9 @@ interface VenueStore extends VenueData {
   future: HistoryEntry[]
   canUndo: boolean
   canRedo: boolean
-  addZone: (name: string, rows: number, cols: number, color: string) => string
-  removeZone: (zoneId: string) => void
+  addZone: (name: string, rows: number, cols: number, color: string, recordHistory?: boolean) => string
+  removeZone: (zoneId: string, recordHistory?: boolean) => void
+  duplicateZone: (zoneId: string, recordHistory?: boolean) => string | null
   updateZone: (zoneId: string, updates: Partial<Pick<Zone, 'name' | 'color'>>) => void
   updateZoneLayout: (zoneId: string, updates: Partial<Pick<Zone, 'x' | 'y' | 'width' | 'height' | 'color'>>) => void
   updateSeat: (zoneId: string, seatId: string, updates: Partial<Omit<Seat, 'id' | 'zoneId' | 'row' | 'col' | 'seatNumber' | 'activityLog'>>, recordHistory?: boolean) => void
@@ -134,7 +138,7 @@ export const useVenueStore = create<VenueStore>()(
       canUndo: false,
       canRedo: false,
 
-      addZone: (name, rows, cols, color) => {
+      addZone: (name, rows, cols, color, recordHistory = true) => {
         const id = generateId()
         const existingZones = get().zones
         const defaultWidth = Math.max(120, cols * 30)
@@ -143,6 +147,18 @@ export const useVenueStore = create<VenueStore>()(
         const defaultY = 50 + Math.floor(existingZones.length / 4) * 120
         const zone: Zone = { id, name, rows, cols, color, x: defaultX, y: defaultY, width: defaultWidth, height: defaultHeight }
         const newSeats = createSeatsForZone(zone)
+
+        if (recordHistory) {
+          const before = cloneSeats(get().seats)
+          const beforeZones = get().zones.map((z) => ({ ...z }))
+          set((s) => ({
+            past: [...s.past, { type: 'addZone', before, beforeZones, label: `创建区域「${name}」` }],
+            future: [],
+            canUndo: true,
+            canRedo: false,
+          }))
+        }
+
         set((state) => ({
           zones: [...state.zones, zone],
           seats: { ...state.seats, [id]: newSeats },
@@ -150,7 +166,22 @@ export const useVenueStore = create<VenueStore>()(
         return id
       },
 
-      removeZone: (zoneId) => {
+      removeZone: (zoneId, recordHistory = true) => {
+        const state = get()
+        const zone = state.zones.find((z) => z.id === zoneId)
+        if (!zone) return
+
+        if (recordHistory) {
+          const before = cloneSeats(state.seats)
+          const beforeZones = state.zones.map((z) => ({ ...z }))
+          set((s) => ({
+            past: [...s.past, { type: 'removeZone', before, beforeZones, label: `删除区域「${zone.name}」` }],
+            future: [],
+            canUndo: true,
+            canRedo: false,
+          }))
+        }
+
         set((state) => {
           const newSeats = { ...state.seats }
           delete newSeats[zoneId]
@@ -159,6 +190,56 @@ export const useVenueStore = create<VenueStore>()(
             seats: newSeats,
           }
         })
+      },
+
+      duplicateZone: (zoneId, recordHistory = true) => {
+        const state = get()
+        const sourceZone = state.zones.find((z) => z.id === zoneId)
+        if (!sourceZone) return null
+
+        const existingZones = state.zones
+        const baseName = sourceZone.name
+        let newName = `${baseName} 副本`
+        let counter = 2
+        const nameSet = new Set(existingZones.map((z) => z.name))
+        while (nameSet.has(newName)) {
+          newName = `${baseName} 副本${counter}`
+          counter++
+        }
+
+        const newId = generateId()
+        const offsetX = 30
+        const offsetY = 30
+        const newZone: Zone = {
+          id: newId,
+          name: newName,
+          rows: sourceZone.rows,
+          cols: sourceZone.cols,
+          color: sourceZone.color,
+          x: sourceZone.x + offsetX,
+          y: sourceZone.y + offsetY,
+          width: sourceZone.width,
+          height: sourceZone.height,
+        }
+        const newSeats = createSeatsForZone(newZone)
+
+        if (recordHistory) {
+          const before = cloneSeats(state.seats)
+          const beforeZones = state.zones.map((z) => ({ ...z }))
+          set((s) => ({
+            past: [...s.past, { type: 'duplicateZone', before, beforeZones, label: `复制区域「${sourceZone.name}」` }],
+            future: [],
+            canUndo: true,
+            canRedo: false,
+          }))
+        }
+
+        set((s) => ({
+          zones: [...s.zones, newZone],
+          seats: { ...s.seats, [newId]: newSeats },
+        }))
+
+        return newId
       },
 
       updateZone: (zoneId, updates) => {

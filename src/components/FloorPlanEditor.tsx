@@ -1,6 +1,6 @@
 import { useState, useRef, useEffect, useCallback } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { Edit, Eye, RotateCcw, Move, Maximize2, Palette, Users, Trash2 } from 'lucide-react'
+import { Edit, Eye, RotateCcw, Move, Maximize2, Palette, Users, Trash2, Copy } from 'lucide-react'
 import { useVenueStore } from '@/store/venueStore'
 import { useUIStore } from '@/store/uiStore'
 import type { Zone } from '@/types'
@@ -28,6 +28,7 @@ export function FloorPlanEditor() {
   const allSeats = useVenueStore((s) => s.seats)
   const updateZoneLayout = useVenueStore((s) => s.updateZoneLayout)
   const removeZone = useVenueStore((s) => s.removeZone)
+  const duplicateZone = useVenueStore((s) => s.duplicateZone)
   const resetZoneLayouts = useVenueStore((s) => s.resetZoneLayouts)
   const ensureZoneLayouts = useVenueStore((s) => s.ensureZoneLayouts)
 
@@ -152,6 +153,14 @@ export function FloorPlanEditor() {
     }
   }
 
+  const handleDuplicateZone = (e: React.MouseEvent, zoneId: string) => {
+    e.stopPropagation()
+    const newId = duplicateZone(zoneId)
+    if (newId) {
+      setSelectedZoneId(newId)
+    }
+  }
+
   const selectedZone = zones.find((z) => z.id === selectedZoneId)
 
   if (zones.length === 0) {
@@ -211,13 +220,23 @@ export function FloorPlanEditor() {
               <Palette size={14} className="text-white/40" />
               <span className="text-xs text-white/50">{selectedZone.name} - 选择颜色</span>
             </div>
-            <button
-              onClick={(e) => handleDeleteZone(e, selectedZone.id)}
-              className="flex items-center gap-1 px-2 py-1 rounded text-xs text-red-400 hover:bg-red-500/20 transition-colors"
-            >
-              <Trash2 size={12} />
-              删除
-            </button>
+            <div className="flex items-center gap-1">
+              <button
+                onClick={(e) => handleDuplicateZone(e, selectedZone.id)}
+                className="flex items-center gap-1 px-2 py-1 rounded text-xs text-white/60 hover:bg-white/10 hover:text-white transition-colors"
+                title="复制区域"
+              >
+                <Copy size={12} />
+                复制
+              </button>
+              <button
+                onClick={(e) => handleDeleteZone(e, selectedZone.id)}
+                className="flex items-center gap-1 px-2 py-1 rounded text-xs text-red-400 hover:bg-red-500/20 transition-colors"
+              >
+                <Trash2 size={12} />
+                删除
+              </button>
+            </div>
           </div>
           <div className="flex gap-2 flex-wrap">
             {PRESET_COLORS.map((color) => (
