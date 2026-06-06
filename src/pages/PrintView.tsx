@@ -1,7 +1,8 @@
-import { useState, useMemo } from 'react'
+import { useState, useMemo, useEffect } from 'react'
 import { useParams, useNavigate, useSearchParams } from 'react-router-dom'
-import { ArrowLeft, Printer, Settings, X, User, Palette, Ticket, Eye, Package } from 'lucide-react'
+import { ArrowLeft, Printer, Settings, X, User, Palette, Ticket, Eye, Package, Save, Trash2, ChevronDown, Check } from 'lucide-react'
 import { useVenueStore } from '@/store/venueStore'
+import { usePrintPresetStore } from '@/store/printPresetStore'
 import type { Seat, Zone, TicketStatus } from '@/types'
 
 export interface PrintOptions {
@@ -27,8 +28,17 @@ export default function PrintView() {
   const [searchParams] = useSearchParams()
   const zones = useVenueStore((s) => s.zones)
   const allSeats = useVenueStore((s) => s.seats)
+  const presets = usePrintPresetStore((s) => s.presets)
+  const activePresetId = usePrintPresetStore((s) => s.activePresetId)
+  const savePreset = usePrintPresetStore((s) => s.savePreset)
+  const deletePreset = usePrintPresetStore((s) => s.deletePreset)
+  const updatePreset = usePrintPresetStore((s) => s.updatePreset)
+  const setActivePreset = usePrintPresetStore((s) => s.setActivePreset)
 
   const [showSettings, setShowSettings] = useState(false)
+  const [showPresetMenu, setShowPresetMenu] = useState(false)
+  const [showSaveDialog, setShowSaveDialog] = useState(false)
+  const [presetName, setPresetName] = useState('')
   const [options, setOptions] = useState<PrintOptions>(() => ({
     showMemberName: true,
     showCheeringColor: true,
@@ -38,6 +48,8 @@ export default function PrintView() {
     layout: urlZoneId ? 'single-zone' : 'overview',
     zoneId: urlZoneId,
   }))
+
+  const activePreset = presets.find((p) => p.id === activePresetId) || null
 
   const targetZones = useMemo(() => {
     if (options.layout === 'single-zone' && options.zoneId) {
@@ -52,7 +64,71 @@ export default function PrintView() {
 
   const updateOption = <K extends keyof PrintOptions>(key: K, value: PrintOptions[K]) => {
     setOptions((prev) => ({ ...prev, [key]: value }))
+    setActivePreset(null)
   }
+
+  const applyPreset = (presetId: string) => {
+    const preset = presets.find((p) => p.id === presetId)
+    if (preset) {
+      const newOptions = { ...preset.options }
+      if (preset.options.layout === 'single-zone' && !preset.options.zoneId && zones.length > 0) {
+        newOptions.zoneId = zones[0].id
+      }
+      setOptions(newOptions)
+      setActivePreset(presetId)
+    }
+    setShowPresetMenu(false)
+  }
+
+  const handleSavePreset = () => {
+    const name = presetName.trim()
+    if (!name) return
+
+    if (activePresetId) {
+      updatePreset(activePresetId, options)
+    } else {
+      savePreset(name, options)
+    }
+    setShowSaveDialog(false)
+    setPresetName('')
+  }
+
+  const handleDeletePreset = (presetId: string, e: React.MouseEvent) => {
+    e.stopPropagation()
+    if (confirm('确定要删除这个方案吗？')) {
+      deletePreset(presetId)
+    }
+  }
+
+  const openSaveDialog = () => {
+    setPresetName(activePreset?.name || '')
+    setShowSaveDialog(true)
+  }
+
+  useEffect(() => {
+    const handleClickOutside = () => setShowPresetMenu(false)
+    if (showPresetMenu) {
+      setTimeout(() => {
+        document.addEventListener('click', handleClickOutside)
+      }, 0)
+    }
+    return () => document.removeEventListener('click', handleClickOutside)
+  }, [showPresetMenu])
+
+  useEffect(() => {
+    if (activePresetId && activePreset) {
+      const newOptions = { ...activePreset.options }
+      if (urlZoneId) {
+        newOptions.layout = 'single-zone'
+        newOptions.zoneId = urlZoneId
+      }
+      if (newOptions.layout === 'single-zone' && !newOptions.zoneId && zones.length > 0) {
+        newOptions.zoneId = zones[0].id
+      }
+      setOptions(newOptions)
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activePresetId])
 
   return (
     <div className="min-h-screen bg-white print:bg-white">
@@ -64,7 +140,53 @@ export default function PrintView() {
           <ArrowLeft size={16} /> 返回
         </button>
 
-        <div className="flex-1" />
+        <div className="relative">
+          <button
+            onClick={(e) => {
+              e.stopPropagation()
+              setShowPresetMenu(!showPresetMenu)
+            }}
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-gray-100 text-gray-700 hover:bg-gray-200 transition-colors text-sm min-w-[140px] justify-between"
+          >
+            <span className="truncate">{activePreset?.name || '选择方案'}</span>
+            <ChevronDown size={14} />
+          </button>
+
+          {showPresetMenu && (
+            <div className="absolute top-full left-0 mt-1 w-56 bg-white rounded-lg shadow-xl border border-gray-100 py-1 z-50">
+              {presets.length === 0 ? (
+                <div className="px-4 py-3 text-sm text-gray-400 text-center">暂无方案</div>
+              ) : (
+                presets.map((preset) => (
+                  <div
+                    key={preset.id}
+                    onClick={() => applyPreset(preset.id)}
+                    className="flex items-center gap-2 px-4 py-2 hover:bg-gray-50 cursor-pointer group"
+                  >
+                    {activePresetId === preset.id && <Check size={14} className="text-neon-pink" />}
+                    {activePresetId !== preset.id && <div className="w-3.5 h-3.5" />}
+                    <span className="flex-1 text-sm text-gray-700 truncate">{preset.name}</span>
+                    <button
+                      onClick={(e) => handleDeletePreset(preset.id, e)}
+                      className="opacity-0 group-hover:opacity-100 text-gray-400 hover:text-red-500 transition-opacity"
+                    >
+                      <Trash2 size={14} />
+                    </button>
+                  </div>
+                ))
+              )}
+              <div className="border-t border-gray-100 mt-1 pt-1">
+                <button
+                  onClick={openSaveDialog}
+                  className="w-full flex items-center gap-2 px-4 py-2 hover:bg-gray-50 text-sm text-gray-700"
+                >
+                  <Save size={14} />
+                  {activePresetId ? '更新当前方案' : '保存为新方案...'}
+                </button>
+              </div>
+            </div>
+          )}
+        </div>
 
         <button
           onClick={() => setShowSettings(true)}
@@ -95,6 +217,29 @@ export default function PrintView() {
             </div>
 
             <div className="p-5 space-y-4">
+              <div>
+                <label className="text-sm font-medium text-gray-700 mb-2 block">常用方案</label>
+                <div className="flex flex-wrap gap-2">
+                  {presets.map((preset) => (
+                    <button
+                      key={preset.id}
+                      onClick={() => {
+                        applyPreset(preset.id)
+                      }}
+                      className={`px-3 py-1.5 rounded-lg text-xs transition-all ${
+                        activePresetId === preset.id
+                          ? 'bg-neon-pink text-white'
+                          : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+                      }`}
+                    >
+                      {preset.name}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              <div className="h-px bg-gray-100 -mx-5" />
+
               <div>
                 <label className="text-sm font-medium text-gray-700 mb-2 block">版式</label>
                 <div className="flex gap-2">
@@ -162,12 +307,68 @@ export default function PrintView() {
               </div>
             </div>
 
-            <div className="px-5 py-4 border-t border-gray-100 flex justify-end">
+            <div className="px-5 py-4 border-t border-gray-100 flex justify-between">
+              <button
+                onClick={openSaveDialog}
+                className="flex items-center gap-1.5 px-4 py-2 rounded-lg bg-gray-100 text-gray-700 text-sm hover:bg-gray-200 transition-colors"
+              >
+                <Save size={14} />
+                {activePresetId ? '更新方案' : '保存方案'}
+              </button>
               <button
                 onClick={() => setShowSettings(false)}
                 className="px-4 py-2 rounded-lg bg-neon-pink text-white text-sm hover:bg-neon-pink/90 transition-colors"
               >
                 完成
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {showSaveDialog && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 print:hidden">
+          <div className="bg-white rounded-xl shadow-2xl w-full max-w-sm mx-4 animate-fade-in">
+            <div className="flex items-center justify-between px-5 py-4 border-b border-gray-100">
+              <h3 className="font-semibold text-gray-900">
+                {activePresetId ? '更新方案' : '保存方案'}
+              </h3>
+              <button
+                onClick={() => setShowSaveDialog(false)}
+                className="text-gray-400 hover:text-gray-600 p-1"
+              >
+                <X size={18} />
+              </button>
+            </div>
+
+            <div className="p-5">
+              <label className="text-sm font-medium text-gray-700 mb-2 block">方案名称</label>
+              <input
+                type="text"
+                value={presetName}
+                onChange={(e) => setPresetName(e.target.value)}
+                placeholder="例如：现场换票版"
+                className="w-full px-3 py-2 rounded-lg border border-gray-200 text-sm focus:outline-none focus:border-neon-pink/50"
+                autoFocus
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') handleSavePreset()
+                }}
+              />
+            </div>
+
+            <div className="px-5 py-4 border-t border-gray-100 flex justify-end gap-2">
+              <button
+                onClick={() => setShowSaveDialog(false)}
+                className="px-4 py-2 rounded-lg bg-gray-100 text-gray-700 text-sm hover:bg-gray-200 transition-colors"
+              >
+                取消
+              </button>
+              <button
+                onClick={handleSavePreset}
+                disabled={!presetName.trim()}
+                className="px-4 py-2 rounded-lg bg-neon-pink text-white text-sm hover:bg-neon-pink/90 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                保存
               </button>
             </div>
           </div>
