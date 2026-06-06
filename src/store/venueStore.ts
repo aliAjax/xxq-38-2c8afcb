@@ -18,6 +18,12 @@ type HistoryActionType =
   | 'batchUpdateZoneLayouts'
   | 'resetZoneLayouts'
 
+const ZONE_LAYOUT_ONLY_ACTIONS: HistoryActionType[] = [
+  'updateZoneLayout',
+  'batchUpdateZoneLayouts',
+  'resetZoneLayouts',
+]
+
 interface HistoryEntry {
   type: HistoryActionType
   before: Record<string, Seat[]>
@@ -1160,10 +1166,10 @@ export const useVenueStore = create<VenueStore>()(
         }
 
         if (entry.beforeZones) {
-          const hasSeatChanges = Object.keys(entry.before).length > 0
+          const isLayoutOnly = ZONE_LAYOUT_ONLY_ACTIONS.includes(entry.type)
           set({
             zones: entry.beforeZones,
-            seats: hasSeatChanges ? entry.before : state.seats,
+            seats: isLayoutOnly ? state.seats : entry.before,
             past: newPast,
             future: [...state.future, futureEntry],
             canUndo: newPast.length > 0,
@@ -1207,10 +1213,10 @@ export const useVenueStore = create<VenueStore>()(
         }
 
         if (entry.beforeZones) {
-          const hasSeatChanges = Object.keys(entry.before).length > 0
+          const isLayoutOnly = ZONE_LAYOUT_ONLY_ACTIONS.includes(entry.type)
           set({
             zones: entry.beforeZones,
-            seats: hasSeatChanges ? entry.before : state.seats,
+            seats: isLayoutOnly ? state.seats : entry.before,
             past: [...state.past, pastEntry],
             future: newFuture,
             canUndo: true,
