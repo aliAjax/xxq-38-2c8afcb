@@ -3,6 +3,28 @@ import { X, Upload, FileText, AlertTriangle, CheckCircle, Users, MapPin, Ticket 
 import { useVenueStore, type MemberImportItem } from '@/store/venueStore'
 import type { TicketStatus } from '@/types'
 
+type FieldKey = 'memberName' | 'zoneName' | 'seatNumber' | 'cheeringColor' | 'ticketStatus' | 'supplies'
+
+type FieldMapping = Record<FieldKey, number | null>
+
+const FIELD_LABELS: Record<FieldKey, string> = {
+  memberName: '成员姓名',
+  zoneName: '区域名',
+  seatNumber: '座位号',
+  cheeringColor: '应援色',
+  ticketStatus: '换票状态',
+  supplies: '物资',
+}
+
+const FIELD_REQUIRED: Record<FieldKey, boolean> = {
+  memberName: true,
+  zoneName: true,
+  seatNumber: true,
+  cheeringColor: false,
+  ticketStatus: false,
+  supplies: false,
+}
+
 interface ImportPreview {
   items: MemberImportItem[]
   matched: number
@@ -32,22 +54,37 @@ function normalizeTicketStatus(status: string): TicketStatus {
   return TICKET_STATUS_MAP[key] || TICKET_STATUS_MAP[status.trim()] || 'none'
 }
 
-function parseCSV(text: string): MemberImportItem[] {
+function parseHeaders(text: string): string[] {
   const lines = text.trim().split(/\r?\n/)
   if (lines.length === 0) return []
+  return lines[0].split(/[,，\t]/).map((h) => h.trim())
+}
 
-  const headerLine = lines[0]
-  const headers = headerLine.split(/[,，\t]/).map((h) => h.trim().toLowerCase())
+function detectColumns(headers: string[]): FieldMapping {
+  const lower = headers.map((h) => h.toLowerCase())
+  return {
+    memberName: lower.findIndex((h) => h.includes('姓名') || h.includes('名字') || h.includes('成员') || h === 'name' || h === 'membername'),
+    zoneName: lower.findIndex((h) => h.includes('区域') || h.includes('区') || h === 'zone' || h === 'zonename' || h.includes('area')),
+    seatNumber: lower.findIndex((h) => h.includes('座位') || h.includes('座号') || h === 'seat' || h === 'seatnumber'),
+    cheeringColor: lower.findIndex((h) => h.includes('颜色') || h.includes('应援色') || h === 'color' || h === 'cheeringcolor'),
+    ticketStatus: lower.findIndex((h) => h.includes('状态') || h.includes('换票') || h === 'status' || h === 'ticketstatus'),
+    supplies: lower.findIndex((h) => h.includes('物资') || h.includes('物品') || h === 'supplies' || h === 'items'),
+  }
+}
 
-  const nameIdx = headers.findIndex((h) => h.includes('姓名') || h.includes('名字') || h.includes('成员') || h === 'name' || h === 'membername')
-  const zoneIdx = headers.findIndex((h) => h.includes('区域') || h.includes('区') || h === 'zone' || h === 'zonename' || h.includes('area'))
-  const seatIdx = headers.findIndex((h) => h.includes('座位') || h.includes('座号') || h === 'seat' || h === 'seatnumber')
-  const colorIdx = headers.findIndex((h) => h.includes('颜色') || h.includes('应援色') || h === 'color' || h === 'cheeringcolor')
-  const statusIdx = headers.findIndex((h) => h.includes('状态') || h.includes('换票') || h === 'status' || h === 'ticketstatus')
-  const suppliesIdx = headers.findIndex((h) => h.includes('物资') || h.includes('物品') || h === 'supplies' || h === 'items')
+function parseCSV(text: string, mapping: FieldMapping): MemberImportItem[] {
+  const lines = text.trim().split(/\r?\n/)
+  if (lines.length <= 1) return []
 
-  if (nameIdx === -1 || zoneIdx === -1 || seatIdx === -1) {
-    throw new Error('CSV 缺少必要列：成员姓名、区域名、座位号')
+  const nameIdx = mapping.memberName
+  const zoneIdx = mapping.zoneName
+  const seatIdx = mapping.seatNumber
+  const colorIdx = mapping.cheeringColor
+  const statusIdx = mapping.ticketStatus
+  const suppliesIdx = mapping.supplies
+
+  if (nameIdx === null || nameIdx < 0 || zoneIdx === null || zoneIdx < 0 || seatIdx === null || seatIdx < 0) {
+    throw new Error('请先为成员姓名、区域名、座位号选择对应列')
   }
 
   const items: MemberImportItem[] = []
@@ -57,7 +94,8 @@ function parseCSV(text: string): MemberImportItem[] {
     if (!line) continue
 
     const values = line.split(/[,，\t]/).map((v) => v.trim())
-    if (values.length < Math.max(nameIdx, zoneIdx, seatIdx) + 1) continue
+    const maxIdx = Math.max(nameIdx, zoneIdx, seatIdx, colorIdx ?? -1, statusIdx ?? -1, suppliesIdx ?? -1)
+    if (values.length < maxIdx + 1) continue
 
     const memberName = values[nameIdx] || ''
     const zoneName = values[zoneIdx] || ''
@@ -69,9 +107,9 @@ function parseCSV(text: string): MemberImportItem[] {
       memberName,
       zoneName,
       seatNumber,
-      cheeringColor: colorIdx >= 0 ? values[colorIdx] || '' : '',
-      ticketStatus: statusIdx >= 0 ? normalizeTicketStatus(values[statusIdx] || '') : 'none',
-      supplies: suppliesIdx >= 0 ? values[suppliesIdx] || '' : '',
+      cheeringColor: colorIdx !== null && colorIdx >= 0 ? values[colorIdx] || '' : '',
+      ticketStatus: statusIdx !== null && statusIdx >= 0 ? normalizeTicketStatus(values[statusIdx] || '') : 'none',
+      supplies: suppliesIdx !== null && suppliesIdx >= 0 ? values[suppliesIdx] || '' : '',
     })
   }
 
@@ -84,7 +122,16 @@ export function MemberImportModal({ open, onClose }: { open: boolean; onClose: (
   const batchImportMembers = useVenueStore((s) => s.batchImportMembers)
 
   const [inputText, setInputText] = useState('')
-  const [step, setStep] = useState<'input' | 'preview' | 'result'>('input')
+  const [step, setStep] = useState<'input' | 'mapping' | 'preview' | 'result'>('input')
+  const [headers, setHeaders] = useState<string[]>([])
+  const [fieldMapping, setFieldMapping] = useState<FieldMapping>({
+    memberName: null,
+    zoneName: null,
+    seatNumber: null,
+    cheeringColor: null,
+    ticketStatus: null,
+    supplies: null,
+  })
   const [preview, setPreview] = useState<ImportPreview | null>(null)
   const [importResult, setImportResult] = useState<{ matched: number; unmatchedZones: string[]; unmatchedSeats: string[]; duplicateMembers: string[] } | null>(null)
   const fileRef = useRef<HTMLInputElement>(null)
@@ -134,9 +181,17 @@ export function MemberImportModal({ open, onClose }: { open: boolean; onClose: (
     return { items, matched, unmatchedZones: Array.from(unmatchedZones), unmatchedSeats, duplicateMembers, errors }
   }
 
-  const handleParse = () => {
+  const handleGoToMapping = () => {
+    const parsedHeaders = parseHeaders(inputText)
+    setHeaders(parsedHeaders)
+    const detected = detectColumns(parsedHeaders)
+    setFieldMapping(detected)
+    setStep('mapping')
+  }
+
+  const handleParseFromMapping = () => {
     try {
-      const items = parseCSV(inputText)
+      const items = parseCSV(inputText, fieldMapping)
       const previewData = previewMatch(items)
       setPreview(previewData)
       setStep('preview')
@@ -168,6 +223,15 @@ export function MemberImportModal({ open, onClose }: { open: boolean; onClose: (
   const handleReset = () => {
     setInputText('')
     setStep('input')
+    setHeaders([])
+    setFieldMapping({
+      memberName: null,
+      zoneName: null,
+      seatNumber: null,
+      cheeringColor: null,
+      ticketStatus: null,
+      supplies: null,
+    })
     setPreview(null)
     setImportResult(null)
   }
@@ -204,8 +268,9 @@ export function MemberImportModal({ open, onClose }: { open: boolean; onClose: (
 
         <div className="flex gap-2 mb-5 flex-shrink-0">
           <StepBadge active={step === 'input'} done={step !== 'input'} label="输入数据" num={1} />
-          <StepBadge active={step === 'preview'} done={step === 'result'} label="确认预览" num={2} />
-          <StepBadge active={step === 'result'} label="导入完成" num={3} />
+          <StepBadge active={step === 'mapping'} done={step === 'preview' || step === 'result'} label="字段映射" num={2} />
+          <StepBadge active={step === 'preview'} done={step === 'result'} label="确认预览" num={3} />
+          <StepBadge active={step === 'result'} label="导入完成" num={4} />
         </div>
 
         {step === 'input' && (
@@ -280,10 +345,134 @@ export function MemberImportModal({ open, onClose }: { open: boolean; onClose: (
                 取消
               </button>
               <button
-                onClick={handleParse}
+                onClick={handleGoToMapping}
                 disabled={!inputText.trim() || zoneNames.length === 0}
                 className="flex-1 px-4 py-2.5 rounded-lg bg-neon-purple text-white font-medium hover:bg-neon-purple/80 disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
                 style={{ boxShadow: inputText.trim() && zoneNames.length > 0 ? '0 0 20px rgba(191,90,242,0.3)' : 'none' }}
+              >
+                下一步：字段映射
+              </button>
+            </div>
+          </>
+        )}
+
+        {step === 'mapping' && (
+          <>
+            <div className="flex-1 overflow-auto space-y-4">
+              <div className="p-3 rounded-lg bg-neon-purple/10 border border-neon-purple/30">
+                <div className="flex items-center gap-2 text-neon-purple text-sm mb-1">
+                  <FileText size={16} /> 检测到 {headers.length} 列数据
+                </div>
+                <p className="text-xs text-white/50">请确认各字段对应的列，已自动识别可能的匹配项。带 <span className="text-red-400">*</span> 为必填项。</p>
+              </div>
+
+              <div className="bg-surface-light rounded-lg overflow-hidden">
+                <div className="px-3 py-2 border-b border-white/5">
+                  <span className="text-sm text-white/60">字段映射配置</span>
+                </div>
+                <div className="divide-y divide-white/5">
+                  {(Object.keys(FIELD_LABELS) as FieldKey[]).map((fieldKey) => (
+                    <div key={fieldKey} className="px-3 py-2.5 flex items-center gap-3">
+                      <div className="w-24 flex-shrink-0">
+                        <span className="text-sm text-white/70">
+                          {FIELD_LABELS[fieldKey]}
+                          {FIELD_REQUIRED[fieldKey] && <span className="text-red-400 ml-0.5">*</span>}
+                        </span>
+                      </div>
+                      <div className="flex-1">
+                        <select
+                          value={fieldMapping[fieldKey] ?? -1}
+                          onChange={(e) => {
+                            const idx = Number(e.target.value)
+                            setFieldMapping((prev) => ({
+                              ...prev,
+                              [fieldKey]: idx >= 0 ? idx : null,
+                            }))
+                          }}
+                          className="w-full bg-surface-lighter border border-white/10 rounded-md px-3 py-1.5 text-sm text-white focus:outline-none focus:border-neon-purple/50 transition-colors appearance-none cursor-pointer"
+                        >
+                          <option value={-1}>-- 不选择 --</option>
+                          {headers.map((h, i) => (
+                            <option key={i} value={i}>
+                              第 {i + 1} 列：{h || '(空)'}
+                            </option>
+                          ))}
+                        </select>
+                      </div>
+                      {fieldMapping[fieldKey] !== null && fieldMapping[fieldKey]! >= 0 && (
+                        <div className="text-xs text-neon-green/70 w-20 text-right flex-shrink-0">
+                          已匹配 ✓
+                        </div>
+                      )}
+                      {FIELD_REQUIRED[fieldKey] && (fieldMapping[fieldKey] === null || fieldMapping[fieldKey]! < 0) && (
+                        <div className="text-xs text-red-400/70 w-20 text-right flex-shrink-0">
+                          未选择
+                        </div>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              {headers.length > 0 && (
+                <div className="bg-surface-light rounded-lg overflow-hidden">
+                  <div className="px-3 py-2 border-b border-white/5">
+                    <span className="text-sm text-white/60">首行数据预览</span>
+                  </div>
+                  <div className="overflow-auto max-h-36">
+                    <table className="w-full text-sm">
+                      <thead className="bg-surface-lighter sticky top-0">
+                        <tr className="text-white/40 text-xs">
+                          {headers.map((h, i) => (
+                            <th key={i} className="px-3 py-1.5 text-left font-medium whitespace-nowrap">
+                              {h || '(空)'}
+                            </th>
+                          ))}
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {(() => {
+                          const lines = inputText.trim().split(/\r?\n/)
+                          const firstDataLine = lines[1]?.trim()
+                          if (!firstDataLine) return null
+                          const values = firstDataLine.split(/[,，\t]/).map((v) => v.trim())
+                          return (
+                            <tr className="border-t border-white/5">
+                              {values.map((v, i) => (
+                                <td key={i} className="px-3 py-1.5 text-white/60 font-mono text-xs whitespace-nowrap">
+                                  {v || <span className="text-white/20">-</span>}
+                                </td>
+                              ))}
+                            </tr>
+                          )
+                        })()}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              )}
+            </div>
+
+            <div className="flex gap-3 mt-5 flex-shrink-0">
+              <button onClick={() => setStep('input')} className="flex-1 px-4 py-2.5 rounded-lg bg-surface-light text-white/60 hover:text-white transition-colors">
+                返回修改
+              </button>
+              <button
+                onClick={handleParseFromMapping}
+                disabled={
+                  fieldMapping.memberName === null || fieldMapping.memberName < 0 ||
+                  fieldMapping.zoneName === null || fieldMapping.zoneName < 0 ||
+                  fieldMapping.seatNumber === null || fieldMapping.seatNumber < 0
+                }
+                className="flex-1 px-4 py-2.5 rounded-lg bg-neon-purple text-white font-medium hover:bg-neon-purple/80 disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
+                style={{
+                  boxShadow:
+                    fieldMapping.memberName !== null && fieldMapping.memberName >= 0 &&
+                    fieldMapping.zoneName !== null && fieldMapping.zoneName >= 0 &&
+                    fieldMapping.seatNumber !== null && fieldMapping.seatNumber >= 0
+                      ? '0 0 20px rgba(191,90,242,0.3)'
+                      : 'none',
+                }}
               >
                 解析并预览
               </button>
@@ -413,8 +602,8 @@ export function MemberImportModal({ open, onClose }: { open: boolean; onClose: (
             </div>
 
             <div className="flex gap-3 mt-5 flex-shrink-0">
-              <button onClick={() => setStep('input')} className="flex-1 px-4 py-2.5 rounded-lg bg-surface-light text-white/60 hover:text-white transition-colors">
-                返回修改
+              <button onClick={() => setStep('mapping')} className="flex-1 px-4 py-2.5 rounded-lg bg-surface-light text-white/60 hover:text-white transition-colors">
+                返回修改映射
               </button>
               <button
                 onClick={handleConfirm}
