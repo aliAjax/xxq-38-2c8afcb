@@ -14,6 +14,9 @@ type HistoryActionType =
   | 'addZone'
   | 'removeZone'
   | 'duplicateZone'
+  | 'updateZoneLayout'
+  | 'batchUpdateZoneLayouts'
+  | 'resetZoneLayouts'
 
 interface HistoryEntry {
   type: HistoryActionType
@@ -90,7 +93,7 @@ interface VenueStore extends VenueData {
   removeZone: (zoneId: string, recordHistory?: boolean) => void
   duplicateZone: (zoneId: string, recordHistory?: boolean) => string | null
   updateZone: (zoneId: string, updates: Partial<Pick<Zone, 'name' | 'color'>>) => void
-  updateZoneLayout: (zoneId: string, updates: Partial<Pick<Zone, 'x' | 'y' | 'width' | 'height' | 'color'>>) => void
+  updateZoneLayout: (zoneId: string, updates: Partial<Pick<Zone, 'x' | 'y' | 'width' | 'height' | 'color'>>, recordHistory?: boolean, historyLabel?: string) => void
   updateSeat: (zoneId: string, seatId: string, updates: Partial<Omit<Seat, 'id' | 'zoneId' | 'row' | 'col' | 'seatNumber' | 'activityLog'>>, recordHistory?: boolean) => void
   batchUpdateSeats: (zoneId: string, seatIds: string[], updates: Partial<Omit<Seat, 'id' | 'zoneId' | 'row' | 'col' | 'seatNumber' | 'activityLog'>>, recordHistory?: boolean, historyLabel?: string) => void
   batchImportMembers: (items: MemberImportItem[], recordHistory?: boolean) => { matched: number; unmatchedZones: string[]; unmatchedSeats: string[]; duplicateMembers: string[] }
@@ -104,7 +107,7 @@ interface VenueStore extends VenueData {
   getZoneStats: (zoneId: string) => { total: number; assigned: number; obstructed: number; ticketStats: Record<TicketStatus, number> }
   getGlobalStats: () => { totalZones: number; totalSeats: number; totalAssigned: number; totalObstructed: number; ticketStats: Record<TicketStatus, number> }
   searchSeats: (zoneId: string, options: SearchOptions) => SeatSearchResult[]
-  resetZoneLayouts: () => void
+  resetZoneLayouts: (recordHistory?: boolean) => void
   ensureZoneLayouts: () => void
   undo: () => void
   redo: () => void
@@ -248,13 +251,55 @@ export const useVenueStore = create<VenueStore>()(
         }))
       },
 
-      updateZoneLayout: (zoneId, updates) => {
+      updateZoneLayout: (zoneId, updates, recordHistory = false, historyLabel) => {
+        const state = get()
+        const zone = state.zones.find((z) => z.id === zoneId)
+        if (!zone) return
+
+        const changed = Object.entries(updates).some(
+          ([key, value]) => zone[key as keyof Zone] !== value
+        )
+        if (!changed) return
+
+        if (recordHistory) {
+          const beforeZones = state.zones.map((z) => ({ ...z }))
+          set((s) => ({
+            past: [...s.past, {
+              type: 'updateZoneLayout',
+              before: {},
+              beforeZones,
+              label: historyLabel || `调整「${zone.name}」布局`
+            }],
+            future: [],
+            canUndo: true,
+            canRedo: false,
+          }))
+        }
+
         set((state) => ({
           zones: state.zones.map((z) => (z.id === zoneId ? { ...z, ...updates } : z)),
         }))
       },
 
-      resetZoneLayouts: () => {
+      resetZoneLayouts: (recordHistory = false) => {
+        const state = get()
+        if (state.zones.length === 0) return
+
+        if (recordHistory) {
+          const beforeZones = state.zones.map((z) => ({ ...z }))
+          set((s) => ({
+            past: [...s.past, {
+              type: 'resetZoneLayouts',
+              before: {},
+              beforeZones,
+              label: '重置区域布局'
+            }],
+            future: [],
+            canUndo: true,
+            canRedo: false,
+          }))
+        }
+
         set((state) => ({
           zones: state.zones.map((zone, index) => ({
             ...zone,
