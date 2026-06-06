@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest'
 import { useVenueStore } from './venueStore'
-import type { Seat, TicketStatus } from '@/types'
+import type { Seat, TicketStatus, ActivityLogEntry, Zone } from '@/types'
 
 const STORAGE_KEY = 'live-cheering-venue-data'
 
@@ -141,7 +141,7 @@ describe('venueStore', () => {
 
       const seat = useVenueStore.getState().seats[zoneId].find((s: Seat) => s.id === seatId)
       expect(seat!.activityLog.length).toBeGreaterThanOrEqual(3)
-      const logTypes = seat!.activityLog.map((log: any) => log.type)
+      const logTypes = seat!.activityLog.map((log: ActivityLogEntry) => log.type)
       expect(logTypes).toContain('assignMember')
       expect(logTypes).toContain('changeTicketStatus')
       expect(logTypes).toContain('updateCheeringColor')
@@ -208,7 +208,7 @@ describe('venueStore', () => {
       updatedSeats.forEach((seat: Seat) => {
         expect(seat.ticketStatus).toBe('exchanged')
         expect(seat.activityLog.length).toBeGreaterThan(0)
-        expect(seat.activityLog.some((log: any) => log.type === 'changeTicketStatus')).toBe(true)
+        expect(seat.activityLog.some((log: ActivityLogEntry) => log.type === 'changeTicketStatus')).toBe(true)
       })
 
       const unaffectedSeats = seats.filter((s: Seat) => !seatIds.includes(s.id))
@@ -224,7 +224,7 @@ describe('venueStore', () => {
       const seats = useVenueStore.getState().seats[zoneId]
       const updatedSeats = seats.filter((s: Seat) => seatIds.includes(s.id))
       updatedSeats.forEach((seat: Seat) => {
-        const changeLog = seat.activityLog.find((log: any) => log.type === 'changeTicketStatus')
+        const changeLog = seat.activityLog.find((log: ActivityLogEntry) => log.type === 'changeTicketStatus')
         expect(changeLog).toBeDefined()
         expect(changeLog!.oldValue).toBe('none')
         expect(changeLog!.newValue).toBe('confirmed')
@@ -363,7 +363,7 @@ describe('venueStore', () => {
       const restoredSeats = useVenueStore.getState().seats[zoneId]
       expect(restoredSeats).toHaveLength(4)
 
-      beforeSeats.forEach((beforeSeat, index) => {
+      beforeSeats.forEach((beforeSeat) => {
         const restoredSeat = restoredSeats.find((s: Seat) => s.id === beforeSeat.id)
         expect(restoredSeat).toBeDefined()
         expect(restoredSeat!.memberName).toBe(beforeSeat.memberName)
@@ -440,7 +440,7 @@ describe('venueStore', () => {
       store.clearZoneSeats(zoneId, true)
 
       const state = useVenueStore.getState()
-      const zone = state.zones.find((z: any) => z.id === zoneId)
+      const zone = state.zones.find((z: Zone) => z.id === zoneId)
       expect(zone).toBeDefined()
       expect(zone!.name).toBe('清空测试区')
       expect(zone!.rows).toBe(2)
